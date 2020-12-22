@@ -1,0 +1,3 @@
+[submodule "6502-emu"]
+	path = external/6502-emu
+	url = https://github.com/oleiman/6502-emu.git
