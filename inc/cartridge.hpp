@@ -8,22 +8,22 @@ namespace cart {
 struct Cartridge {
   Cartridge(std::ifstream &infile);
   void parseHeader(std::array<uint8_t, 16> hdr);
-  uint16_t prgRomSize;
-  uint16_t chrRomSize;
-  bool hasChrRom;
-  uint8_t mirroring;
-  bool hasPrgRam;
-  uint8_t prgRamSize;
-  bool hasTrainer;
-  bool ignoreMirror;
-  bool vsSystem;
-  bool pc10;
-  bool nes2;
+  uint16_t prgRomSize = 0;
+  uint16_t chrRomSize = 0;
+  // TODO(oren): mnemonic would be nice to have here
+  uint8_t mirroring = 0;
+  bool hasPrgRam = false;
+  uint8_t prgRamSize = 0;
+  bool hasTrainer = false;
+  bool ignoreMirror = false;
+  bool vsSystem = false;
+  bool pc10 = false;
+  bool nes2 = false;
 
   // NOTE(oren): almost completely unused, apparently
-  uint8_t tvSystem;
+  uint8_t tvSystem = 0;
 
-  uint8_t mapper;
+  uint8_t mapper = 0;
 
   std::vector<uint8_t> trainer_;
   std::vector<uint8_t> prg_rom_;

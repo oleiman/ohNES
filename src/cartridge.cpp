@@ -52,10 +52,8 @@ Cartridge::Cartridge(std::ifstream &infile) {
 
   prg_rom_ = vector<uint8_t>(it, it + prgRomSize);
   it += prg_rom_.size();
-  if (hasChrRom) {
-    chr_rom_ = vector<uint8_t>(it, it + chrRomSize);
-    it += chr_rom_.size();
-  }
+  chr_rom_ = vector<uint8_t>(it, it + chrRomSize);
+  it += chr_rom_.size();
 
   if (pc10) {
     pc_inst_rom_ = vector<uint8_t>(it, it + 8192);
@@ -75,7 +73,6 @@ void Cartridge::parseHeader(array<uint8_t, 16> hdr) {
 
   prgRomSize = hdr[4] * (1 << 14);
   chrRomSize = hdr[5] * (1 << 13);
-  hasChrRom = chrRomSize == 0;
 
   mirroring = hdr[6] & MIRRORING;
   hasPrgRam = hdr[6] & PRGRAM;
@@ -99,15 +96,15 @@ ostream &operator<<(ostream &os, Cartridge const &in) {
   ss << std::hex;
   ss << B_RED(string("Cartridge description:")) << endl;
   ss << "\t" << B_CYAN(string("PRG ROM size")) << ": 0x" << +in.prg_rom_.size()
-     << " B" << endl;
+     << "B" << endl;
   ss << "\t" B_CYAN(string("CHR ROM size")) << ": 0x" << +in.chr_rom_.size()
-     << " B" << endl;
+     << "B" << endl;
   ss << "\t" << B_CYAN(string("Mapper: ")) << +in.mapper << endl;
   ss << "\t" << (in.mirroring == 0 ? "Horizontal" : "Vertical") << " mirroring"
      << endl;
   if (in.hasPrgRam) {
     ss << "\tPRG RAM size:"
-       << ": 0x" << +in.prgRamSize << " B" << endl;
+       << ": 0x" << +in.prgRamSize << "B" << endl;
   }
   if (in.hasTrainer) {
     ss << "\tTrainer at $7000 - $71FF" << endl;
