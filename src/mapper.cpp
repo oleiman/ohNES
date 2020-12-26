@@ -30,7 +30,9 @@ void NROM::write(AddressT addr, DataT data) {
     // cart_.prg_rom_[addr & (cart_.prgRomSize - 1)] = data;
     std::stringstream ss;
     ss << "WRITE TO CART ROM 0x" << std::hex << addr;
+    // std::cerr << ss.str() << std::endl;
     throw std::runtime_error(ss.str());
+    // cart_.prg_rom_[addr & (cart_.prgRomSize - 1)] = data;
     // "ATTEMPT TO WRITE TO CART ROM " << std::hex << addr << std::endl;
   }
 }
@@ -43,7 +45,13 @@ NROM::DataT NROM::read(AddressT addr) {
     // std::cerr << "reading from ppu reg " << std::hex << +addr << std::endl;
     // TODO(oren): I think it's safe to assume that we'll need some special
     // logic here, pending my learning what these actually do LOL
+
     result = ppu_reg_.read(CName(addr & 0x07));
+    // break 0xc7af
+    // if (addr == 0x2002) {
+    //   std::cout << +CName(addr & 0x07) << " " << +result << std::endl;
+    // }
+
   } else if (addr < 0x4020) {
     // APU and I/O
   } else if (addr < 0x6000) {

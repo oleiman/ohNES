@@ -100,29 +100,27 @@ int main(int argc, char **argv) {
   // interface, but that's only to drive other components. The counter itself
   // could just get incremented in a wrapper or something
   int cycles = 0;
-  auto tick = [&cycles]() { ++cycles; };
-  M6502 cpu(cpu_vram.addressBus(), cpu_vram.dataBus(), tick);
+  M6502 cpu(cpu_vram.addressBus(), cpu_vram.dataBus(), false);
 
-  // automation mode, skips over the ppu check
+  auto pixProc =
+      PPU(ppu_vram.addressBus(), ppu_vram.dataBus(), cpu.nmiPin(), ppu_reg);
+  // pixProc.initFramebuf();
+  pixProc.showPatternTable();
+  auto tick = [&]() {
+    pixProc.step(3);
+    ++cycles;
+  };
+  cpu.registerClockCallback(tick);
+
+  // automation mode, skips over the ppu check in nestest
   // cpu.initPc(0xC000);
-  cpu.reset();
 
-  // ppu mode, jumps to c004 and checks ppu status
-  // cpu.reset();
+  // full mode. most roms just loop on status. PPU not yet implemented
+  cpu.reset();
 
   Debugger d(true, false);
 
-  cpu_vram.addressBus().put(0x000);
-  // std::cerr << std::hex << "0x" << +cpu_vram.dataBus().get() << std::endl;
-
   SDL_Event event;
-
-  // std::vector<std::array<uint8_t, 3>> pixels(ppu::WIDTH * ppu::HEIGHT,
-  // {92, 30, 228});
-
-  auto pixProc = PPU(ppu_vram.addressBus(), ppu_vram.dataBus(), cpu.nmiPin());
-  // pixProc.initFramebuf();
-  pixProc.showPatternTable();
 
   bool quit = false;
   while (!quit) {
@@ -136,21 +134,31 @@ int main(int argc, char **argv) {
       }
     }
 
-    // maybe some stuff about performance counter to drive a certain number of
-    // cpu cycles we're still technically instruction stepped, so this might get
-    // a little weird and rendering may suffer
-
     try {
-      do {
-        cpu.debugStep(d);
-        // std::cerr << +cycles << std::endl;
-      } while (cpu.pc() != 0xC66E);
+      // cpu.debugStep(d);
+      cpu.step();
     } catch (std::exception &e) {
       std::cerr << e.what() << std::endl;
       std::cerr << "Cycles: " << +cycles << std::endl;
       std::cerr << std::hex << "PC: 0x" << +cpu.pc() << std::endl;
       quit = true;
     }
+
+    // maybe some stuff about performance counter to drive a certain number of
+    // cpu cycles we're still technically instruction stepped, so this might get
+    // a little weird and rendering may suffer
+
+    // try {
+    //   do {
+    //     cpu.debugStep(d);
+    //     // std::cerr << +cycles << std::endl;
+    //   } while (cpu.pc() != 0xC66E);
+    // } catch (std::exception &e) {
+    //   std::cerr << e.what() << std::endl;
+    //   std::cerr << "Cycles: " << +cycles << std::endl;
+    //   std::cerr << std::hex << "PC: 0x" << +cpu.pc() << std::endl;
+    //   quit = true;
+    // }
 
     SDL_UpdateTexture(texture, nullptr, pixProc.frameBuffer().data(),
                       ppu::WIDTH * 3);
