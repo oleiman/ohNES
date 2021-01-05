@@ -1,15 +1,14 @@
 #pragma once
 
 #include "memory.hpp"
+#include "ppu_registers.hpp"
 
 #include <array>
 #include <iostream>
 
-namespace ppu {
+namespace vid {
 const int WIDTH = 256;
 const int HEIGHT = 240;
-
-class Registers;
 
 class PPU {
   using AddressT = uint16_t;
@@ -17,20 +16,35 @@ class PPU {
   using FrameBuffer = std::array<std::array<uint8_t, 3>, WIDTH * HEIGHT>;
 
 public:
-  PPU(mem::Bus<AddressT> &abus, mem::Bus<DataT> &mbus,
-      std::function<void(void)> nmi, Registers &reg)
-      : address_bus_(abus), data_bus_(mbus), nmi_(nmi), reg_(reg) {}
+  PPU(mem::Mapper &mapper, std::function<void(void)> nmi, Registers &reg)
+      : mapper_(mapper), nmi_(nmi), reg_(reg) {}
 
   FrameBuffer &frameBuffer() { return framebuf_; }
 
   void step(uint8_t cycles);
   void tick();
 
-  // TODO(oren): remove
-  void initFramebuf() {
-    for (int j = 0; j < HEIGHT; ++j) {
-      for (int i = 0; i < WIDTH; ++i) {
-        set_pixel(i, j, SystemPalette[1]);
+  void renderBackground() {
+    auto bank = reg_.backgroundPTableAddr();
+    auto nt_base = reg_.baseNametableAddr();
+    std::cout << std::hex << +nt_base << " " << +bank << std::dec << std::endl;
+
+    for (int i = 0; i < 0x03c0; ++i) {
+      auto tile = static_cast<uint16_t>(readByte(nt_base + i));
+      auto tile_x = i % 32;
+      auto tile_y = i / 32;
+      auto palette = bgPalette(nt_base, tile_x, tile_y);
+      auto tile_base = bank + tile * 16;
+      for (int y = 0; y < 8; ++y) {
+        auto upper = readByte(tile_base + y);
+        auto lower = readByte(tile_base + y + 8);
+        for (int x = 7; x >= 0; x--) {
+          auto value = ((upper & 1) << 1) | (lower & 1);
+          upper >>= 1;
+          lower >>= 1;
+          uint8_t rgb = palette[value];
+          set_pixel(tile_x * 8 + x, tile_y * 8 + y, SystemPalette[rgb]);
+        }
       }
     }
   }
@@ -81,6 +95,10 @@ public:
   }
 
 private:
+  void serviceMemRequest();
+
+  void visibleLine();
+  void vBlankLine();
   void set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb) {
     int pi = y * WIDTH + x;
     for (int i = 0; i < 3; ++i) {
@@ -88,117 +106,24 @@ private:
     }
   }
 
-  DataT readByte(AddressT addr) {
-    address_bus_.put(addr);
-    return data_bus_.get();
-  }
+  std::array<uint8_t, 4> bgPalette(uint16_t base, uint16_t tile_x,
+                                   uint16_t tile_y);
+
+  DataT readByte(AddressT addr) { return mapper_.read(addr); }
+  void writeByte(AddressT addr, DataT data) { mapper_.write(addr, data); }
 
   FrameBuffer framebuf_{};
-  mem::Bus<AddressT> &address_bus_;
-  mem::Bus<DataT> &data_bus_;
+  mem::Mapper &mapper_;
   std::function<void(void)> nmi_;
   Registers &reg_;
   uint16_t cycle_ = 0;
-  uint16_t scanline_ = 0;
+  uint16_t scanline_ = 261; // initialize to pre-render scanline, i guess
+  std::array<uint8_t, 32> oam_2_;
+
+  bool mem_in_progress = false;
+  uint8_t step_c_;
 
   const static std::array<std::array<uint8_t, 3>, 64> SystemPalette;
 };
 
-class Registers {
-
-public:
-  enum CName {
-    PPUCTRL = 0,
-    PPUMASK,
-    PPUSTATUS,
-    OAMADDR,
-    OAMDATA,
-    PPUSCROLL,
-    PPUADDR,
-    PPUDATA,
-  };
-  // TODO(oren): consider OAMDMA transfers. might be tricky
-
-  // Registers() { regs_[PPUCTRL] = 0x80; }
-
-  void write(CName r, uint8_t val);
-  uint8_t read(CName r);
-
-  /*** PPUCTRL Accessors ***/
-  uint16_t baseNametableAddr();
-  uint8_t vRamAddrInc();
-  uint16_t spritePTableAddr();
-  uint16_t backgroundPTableAddr();
-  std::array<uint8_t, 2> const &spriteSize();
-
-  // false: read backdrop from EXT pins
-  // true: output color on EXT pins
-  bool ppuMasterSlave();
-  bool vBlankNMI();
-
-  // TODO(oren): scrollingMSB ??
-
-  /*END PPUCTRL Accessors*/
-
-  /*** PPUMASK Accessors ***/
-  bool grayscale();
-  bool showBackgroundLeft8();
-  bool showSpritesLeft8();
-  bool showBackground();
-  bool showSprites();
-  bool emphasizeRed();
-  bool emphasizeGreen();
-  bool emphasizeBlue();
-  /*END PPUMASK Accessors*/
-
-  /*** PPUSTATUS Accessors ***/
-  // TODO(oren): stores 5 lsb previously written into a PPU
-  // not sure whether we need to do anything with these
-  // In general, some work is required here as the bits of the
-  // status register appear to be set by the PPU in response to
-  // certain events, e.g. VBlank start/end
-  bool spriteOverflow();
-  bool spriteZeroHit();
-  bool vBlankStarted();
-  void setVBlankStarted();
-  void clearVBlankStarted();
-  /*END PPUSTATUS Accessors ***/
-
-  /*** Address Accessors ***/
-  uint8_t oamAddr();
-  uint8_t oamData();
-  uint16_t scrollAddr();
-  uint16_t vRamAddr();
-  /*END Address Accessors ***/
-
-  /*** Data Port ***/
-  // NOTE(oren): the way I'm thinking about this, the read/write interface
-  // is for the CPU only, whereas these accessors are for the PPU
-  // With video ram increment happening only on the PPU accesses
-  // on the other hand, PPU needs to know somehow whether the CPU is reading
-  // or writing, when to flush its buffer, etc
-  uint8_t getData();
-  // this is like filling the internal buffer
-  void putData(uint8_t);
-  bool writePending();
-  bool readPending();
-  bool handleNmi();
-
-private:
-  std::array<uint8_t, 8> regs_{};
-  bool addr_latch_ = false;
-  uint16_t scroll_addr_ = 0x0000;
-  uint16_t vram_addr_ = 0x0000;
-  bool write_pending_ = false;
-  bool read_pending_ = false;
-  bool nmi_pending_ = false;
-
-  const static std::array<bool, 8> Writeable;
-  const static std::array<bool, 8> Readable;
-  const static std::array<uint16_t, 4> BaseNTAddr;
-  const static std::array<uint8_t, 2> VRamAddrInc;
-  const static std::array<uint16_t, 2> PTableAddr;
-  const static std::array<std::array<uint8_t, 2>, 2> SpriteSize;
-};
-
-} // namespace ppu
+} // namespace vid

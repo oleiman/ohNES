@@ -19,12 +19,14 @@ using cpu::M6502;
 using dbg::Debugger;
 using mapper::NROM;
 using mapper::PPUMap;
-using mem::VRam;
-using ppu::PPU;
-using ppu::Registers;
 using std::string;
+using vid::PPU;
+using vid::Registers;
 
 using std::filesystem::current_path;
+
+#define SCALE 4
+#define SCREEN_DELAY 2000
 
 int main(int argc, char **argv) {
   if (argc != 2) {
@@ -42,8 +44,8 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  SDL_CreateWindowAndRenderer(ppu::WIDTH * 2, ppu::HEIGHT * 2, SDL_WINDOW_SHOWN,
-                              &window, &renderer);
+  SDL_CreateWindowAndRenderer(vid::WIDTH * SCALE, vid::HEIGHT * SCALE,
+                              SDL_WINDOW_SHOWN, &window, &renderer);
 
   if (window == nullptr || renderer == nullptr) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
@@ -56,11 +58,11 @@ int main(int argc, char **argv) {
   SDL_SetWindowTitle(window, "ohNES v0.1");
 
   SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-  SDL_RenderSetLogicalSize(renderer, ppu::WIDTH, ppu::HEIGHT);
+  SDL_RenderSetLogicalSize(renderer, vid::WIDTH, vid::HEIGHT);
 
   SDL_Texture *texture =
       SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24,
-                        SDL_TEXTUREACCESS_STREAMING, ppu::WIDTH, ppu::HEIGHT);
+                        SDL_TEXTUREACCESS_STREAMING, vid::WIDTH, vid::HEIGHT);
 
   string f(argv[1]);
   std::ifstream infile(f, std::ios::in | std::ios::binary);
@@ -87,27 +89,22 @@ int main(int argc, char **argv) {
   // be updated after construction, but this leaves the CPU/PPU in an unuseable
   // state, which just feels a little gross.
   Registers ppu_reg;
-
-  // TODO(oren): this interface is broken. No way at all to select
-  // a mapper at runtime :(
-  // there shouldn't be templates here LOL
-  std::array<uint8_t, 0x800> cpu_mem{};
-  VRam cpu_vram(NROM(c, cpu_mem, ppu_reg));
-  VRam ppu_vram(PPUMap(c, cpu_mem));
+  // std::array<uint8_t, 0x800> cpu_mem{};
+  std::array<uint8_t, 256> ppu_oam;
+  NROM cpu_map(c, ppu_reg, ppu_oam);
+  PPUMap ppu_map(c, ppu_oam);
 
   // TODO(oren): I think I'd actually like to move this inside the cpu, giving
   // access to debugger and potentially logging. Would still need the callback
   // interface, but that's only to drive other components. The counter itself
   // could just get incremented in a wrapper or something
   int cycles = 0;
-  M6502 cpu(cpu_vram.addressBus(), cpu_vram.dataBus(), false);
+  M6502 cpu(cpu_map, false);
 
-  auto pixProc =
-      PPU(ppu_vram.addressBus(), ppu_vram.dataBus(), cpu.nmiPin(), ppu_reg);
-  // pixProc.initFramebuf();
-  pixProc.showPatternTable();
+  auto ppu = PPU(ppu_map, cpu.nmiPin(), ppu_reg);
+  ppu.showPatternTable();
   auto tick = [&]() {
-    pixProc.step(3);
+    ppu.step(3);
     ++cycles;
   };
   cpu.registerClockCallback(tick);
@@ -115,7 +112,6 @@ int main(int argc, char **argv) {
   // automation mode, skips over the ppu check in nestest
   // cpu.initPc(0xC000);
 
-  // full mode. most roms just loop on status. PPU not yet implemented
   cpu.reset();
 
   Debugger d(true, false);
@@ -142,29 +138,23 @@ int main(int argc, char **argv) {
       std::cerr << "Cycles: " << +cycles << std::endl;
       std::cerr << std::hex << "PC: 0x" << +cpu.pc() << std::endl;
       quit = true;
+      SDL_Delay(SCREEN_DELAY);
     }
 
     // maybe some stuff about performance counter to drive a certain number of
     // cpu cycles we're still technically instruction stepped, so this might get
     // a little weird and rendering may suffer
 
-    // try {
-    //   do {
-    //     cpu.debugStep(d);
-    //     // std::cerr << +cycles << std::endl;
-    //   } while (cpu.pc() != 0xC66E);
-    // } catch (std::exception &e) {
-    //   std::cerr << e.what() << std::endl;
-    //   std::cerr << "Cycles: " << +cycles << std::endl;
-    //   std::cerr << std::hex << "PC: 0x" << +cpu.pc() << std::endl;
-    //   quit = true;
-    // }
-
-    SDL_UpdateTexture(texture, nullptr, pixProc.frameBuffer().data(),
-                      ppu::WIDTH * 3);
-    SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-    SDL_RenderPresent(renderer);
+    if (cpu.nmiPending() && ppu_reg.showBackground()) {
+      std::cout << "UPDATE SCREEN" << std::endl;
+      ppu.renderBackground();
+      SDL_UpdateTexture(texture, nullptr, ppu.frameBuffer().data(),
+                        vid::WIDTH * 3);
+      SDL_RenderClear(renderer);
+      SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+      SDL_RenderPresent(renderer);
+      SDL_Delay(SCREEN_DELAY);
+    }
   }
 
   SDL_DestroyRenderer(renderer);

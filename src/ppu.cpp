@@ -1,46 +1,138 @@
 #include "ppu.hpp"
 
-#define BIT0 0b00000001
-#define BIT1 0b00000010
-#define BIT2 0b00000100
-#define BIT3 0b00001000
-#define BIT4 0b00010000
-#define BIT5 0b00100000
-#define BIT6 0b01000000
-#define BIT7 0b10000000
+#include <algorithm>
+#include <bitset>
 
 using std::array;
 using std::to_string;
 
-namespace ppu {
+namespace vid {
 
 void PPU::step(uint8_t cycles) {
-  cycle_ += cycles;
 
   if (reg_.handleNmi()) {
     nmi_();
   }
 
-  if (cycle_ >= 341) {
-    cycle_ -= 341;
-    ++scanline_;
-    // std::cerr << "scanline: " << +scanline_ << std::endl;
-    if (scanline_ == 241) {
-      if (reg_.vBlankNMI()) {
-        std::cerr << "generate nmi" << std::endl;
-        nmi_();
-      }
-      std::cerr << "setting vblank" << std::endl;
-      reg_.setVBlankStarted();
+  // TODO(oren): this leads to a BRK at some point and we get burned
+  // trying to write to cartridge ROM
+  cycles += reg_.oamCycles();
 
-    } else if (scanline_ >= 262) {
-      scanline_ = 0;
+  while (cycles-- > 0) {
+    if (scanline_ >= 262) {
+      std::cout << "clear vblank " << std::dec << +scanline_ << std::endl;
       reg_.clearVBlankStarted();
+      scanline_ = 0;
+    }
+
+    if (!(reg_.showBackground() || reg_.showSprites())) {
+      vBlankLine();
+    } else if (scanline_ < 240) {
+      visibleLine();
+    } else if (scanline_ == 240) {
+      tick();
+    } else if (scanline_ < 261) { // VBlank lines
+      vBlankLine();
+    } else if (scanline_ == 261) {
+      // TODO(oren): pre-render scanline
+      if (cycle_ == 1) {
+      }
+      tick();
     }
   }
 }
 
-void PPU::tick() {}
+void PPU::visibleLine() {
+  // std::cerr << " render a visible line" << std::endl;
+  if (cycle_ == 0) {
+    tick();
+    return;
+  }
+
+  if (reg_.writePending() || reg_.readPending()) {
+    if (reg_.writePending()) {
+      throw std::runtime_error("CPU writing during non-VBLANK line");
+    } else {
+      throw std::runtime_error("CPU reading during non-VBLANK line");
+    }
+  }
+
+  bool odd = cycle_ & 0x01;
+
+  if (cycle_ < 257) { // Data for current scanline
+    if (((cycle_ - 1) & 0x07) == 0) {
+      // TODO(oren): reload shift registers
+    }
+    if (odd) {
+      // TODO(oren): READ into internal latches
+      // 1. Nametable byte
+      // 2. Attribute table byte
+      // 3. Pattern table tile low
+      // 4. Pattern table tile high (+8 bytes from pattern table tile low)
+    } else {
+      // "finalize" the memory access from the previous cycle)
+    }
+    // bookkeeping
+  } else if (cycle_ < 321) {
+    oam_2_.fill(0);
+    // TODO(oren): sprite evaluation
+  } else if (cycle_ < 336) {
+    // TODO(oren): load first 2 tiles for next scanline into shift registers
+  } else {
+    // TODO(oren): throwaway reads (cycles 337 - 340)
+  }
+  tick();
+}
+
+void PPU::vBlankLine() {
+  if (cycle_ == 1 && scanline_ == 241) {
+    if (reg_.vBlankNMI()) {
+      std::cerr << "generate nmi-->";
+      nmi_();
+    }
+    std::cerr << "setting vblank" << std::endl;
+    reg_.setVBlankStarted();
+  }
+
+  bool odd = cycle_ & 0x01;
+
+  // TODO(oren): service CPU memory requests
+  // again only on odd cycles to account for 2-cycle cost. may need to look into
+  // this a bit more
+  if (odd) {
+    if (reg_.readPending()) {
+      auto addr = reg_.vRamAddr();
+      reg_.putData(readByte(addr));
+    } else if (reg_.writePending()) {
+      auto addr = reg_.vRamAddr();
+      auto data = reg_.getData();
+      writeByte(addr, data);
+    }
+  }
+  tick();
+}
+
+std::array<uint8_t, 4> PPU::bgPalette(uint16_t base, uint16_t tile_x,
+                                      uint16_t tile_y) {
+  uint16_t at_base = base + 0x3c0;
+  uint8_t block_x = tile_x >> 2;
+  uint8_t block_y = tile_y >> 2;
+  auto at_entry = readByte(at_base + (block_y * 8 + block_x));
+  uint8_t meta_x = (tile_x & 0x03) >> 1;
+  uint8_t meta_y = (tile_y & 0x03) >> 1;
+  uint8_t shift = (meta_y * 2 + meta_x) << 1;
+  uint8_t pidx = ((at_entry >> shift) & 0b11) << 2;
+  return {readByte(0x3f00), readByte(0x3f01 + pidx), readByte(0x3f02 + pidx),
+          readByte(0x3f03 + pidx)};
+}
+
+inline void PPU::tick() {
+  ++cycle_;
+  if (cycle_ == 341) {
+    ++scanline_;
+    cycle_ = 0;
+  }
+}
 
 const array<array<uint8_t, 3>, 64> PPU::SystemPalette = {
     {{0x80, 0x80, 0x80}, {0x00, 0x3D, 0xA6}, {0x00, 0x12, 0xB0},
@@ -66,161 +158,4 @@ const array<array<uint8_t, 3>, 64> PPU::SystemPalette = {
      {0x99, 0xFF, 0xFC}, {0xDD, 0xDD, 0xDD}, {0x11, 0x11, 0x11},
      {0x11, 0x11, 0x11}}};
 
-void Registers::write(CName r, uint8_t val) {
-  if (!Writeable[r]) {
-    // TODO(oren): decide on some failure mode
-    throw std::runtime_error("Attempt to write read-only PPU Register " +
-                             to_string(r));
-  }
-
-  write_pending_ = false;
-  // store lower 5 bits of the write in the status register
-  regs_[PPUSTATUS] &= (0b11100000 | (val & 0b00011111));
-
-  // TODO(oren): this should maybe go inside the PPU itself
-  // need to figure out how to manage state between PPU cycles
-  if (r == PPUSCROLL) {
-    if (!addr_latch_) {
-      scroll_addr_ = 0x0000;
-      scroll_addr_ |= val;
-      scroll_addr_ <<= 8;
-    } else {
-      scroll_addr_ |= val;
-    }
-    addr_latch_ = !addr_latch_;
-  } else if (r == PPUADDR) {
-    if (!addr_latch_) {
-      vram_addr_ = 0x0000;
-      vram_addr_ |= val;
-      vram_addr_ <<= 8;
-    } else {
-      vram_addr_ |= val;
-    }
-    addr_latch_ = !addr_latch_;
-  } else if (r == PPUDATA) {
-    write_pending_ = true;
-  }
-
-  // TODO(oren): control flow...
-  bool gen_nmi = vBlankNMI();
-  regs_[r] = val;
-
-  if (!gen_nmi && vBlankNMI() && vBlankStarted()) {
-    nmi_pending_ = true;
-  }
-
-} // namespace ppu
-
-uint8_t Registers::read(CName r) {
-  if (!Readable[r]) {
-    throw std::runtime_error("Attempt to read from write-only PPU Register " +
-                             to_string(r));
-  }
-  read_pending_ = false;
-
-  auto result = regs_[r];
-  // TODO(oren): this might have timing implications
-  if (r == PPUSTATUS) {
-    regs_[r] &= ~BIT7;
-    addr_latch_ = false;
-  } else if (r == PPUDATA) {
-
-    // CPU reads from PPUDATA
-    // setting the flag in the registers
-    // in that same cycle, the PPU sees the pending read flag
-    // reads from the stored vram address
-    // calls putData with the result, which increments the address
-    // and clears the pending read flag
-    // now the right data is in PPUDATA for the next CPU read
-    // which sets the flag again, triggering the PPU to read from
-    // the incremented address
-    read_pending_ = true;
-
-    // TODO(oren): something special for palette (i.e. vram_add 0x3F00 - 0x3FFF)
-    // need to be able to place a byte directly into PPUDATA and return it
-  }
-  return result;
-}
-
-inline uint16_t Registers::baseNametableAddr() {
-  return BaseNTAddr[regs_[PPUCTRL] & (BIT0 | BIT1)];
-}
-
-inline uint8_t Registers::vRamAddrInc() {
-  uint8_t i = (regs_[PPUCTRL] & BIT2) >> 2;
-  return VRamAddrInc[i];
-}
-
-inline uint16_t Registers::spritePTableAddr() {
-  uint8_t i = (regs_[PPUCTRL] & BIT3) >> 3;
-  return PTableAddr[i];
-}
-
-inline uint16_t Registers::backgroundPTableAddr() {
-  uint8_t i = (regs_[PPUCTRL] & BIT4) >> 4;
-  return PTableAddr[i];
-}
-
-inline std::array<uint8_t, 2> const &Registers::spriteSize() {
-  uint8_t i = (regs_[PPUCTRL] & BIT5) >> 5;
-  return SpriteSize[i];
-}
-
-inline bool Registers::ppuMasterSlave() { return regs_[PPUCTRL] & BIT6; }
-
-inline bool Registers::vBlankNMI() { return regs_[PPUCTRL] & BIT7; }
-
-inline bool Registers::grayscale() { return regs_[PPUMASK] & BIT0; }
-inline bool Registers::showBackgroundLeft8() { return regs_[PPUMASK] & BIT1; }
-inline bool Registers::showSpritesLeft8() { return regs_[PPUMASK] & BIT2; }
-inline bool Registers::showBackground() { return regs_[PPUMASK] & BIT3; }
-inline bool Registers::showSprites() { return regs_[PPUMASK] & BIT4; }
-inline bool Registers::emphasizeRed() { return regs_[PPUMASK] & BIT5; }
-inline bool Registers::emphasizeGreen() { return regs_[PPUMASK] & BIT6; }
-inline bool Registers::emphasizeBlue() { return regs_[PPUMASK] & BIT7; }
-
-inline bool Registers::spriteOverflow() { return regs_[PPUSTATUS] & BIT5; }
-inline bool Registers::spriteZeroHit() { return regs_[PPUSTATUS] & BIT6; }
-inline bool Registers::vBlankStarted() { return regs_[PPUSTATUS] & BIT7; }
-
-inline void Registers::setVBlankStarted() { regs_[PPUSTATUS] |= BIT7; }
-inline void Registers::clearVBlankStarted() { regs_[PPUSTATUS] &= ~BIT7; }
-
-inline uint8_t Registers::oamAddr() { return regs_[OAMADDR]; }
-inline uint8_t Registers::oamData() { return regs_[OAMDATA]; }
-
-// TODO(oren): logic for reading between the two prescribed register writes?
-// again, this should probably go inside the PPU
-inline uint16_t Registers::scrollAddr() { return scroll_addr_; }
-inline uint16_t Registers::vRamAddr() { return vram_addr_; }
-
-inline uint8_t Registers::getData() {
-  vram_addr_ += vRamAddrInc();
-  return regs_[PPUDATA];
-}
-
-inline void Registers::putData(uint8_t data) {
-  vram_addr_ += vRamAddrInc();
-  regs_[PPUDATA] = data;
-}
-inline bool Registers::writePending() { return write_pending_; }
-inline bool Registers::readPending() { return read_pending_; }
-inline bool Registers::handleNmi() {
-  auto tmp = nmi_pending_;
-  nmi_pending_ = false;
-  return tmp;
-}
-
-const array<bool, 8> Registers::Writeable = {true, true, false, true,
-                                             true, true, true,  true};
-const array<bool, 8> Registers::Readable = {false, false, true,  false,
-                                            true,  false, false, true};
-
-const array<uint16_t, 4> Registers::BaseNTAddr = {0x2000, 0x2400, 0x2800,
-                                                  0x2C00};
-const array<uint8_t, 2> Registers::VRamAddrInc = {0x00, 0x20};
-const array<uint16_t, 2> Registers::PTableAddr = {0x000, 0x1000};
-const std::array<std::array<uint8_t, 2>, 2> Registers::SpriteSize = {
-    {{8, 8}, {8, 16}}};
-
-} // namespace ppu
+} // namespace vid

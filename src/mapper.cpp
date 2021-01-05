@@ -3,15 +3,23 @@
 #include <iostream>
 #include <sstream>
 
-using CName = ppu::Registers::CName;
+using CName = vid::Registers::CName;
 
 namespace mapper {
 void NROM::write(AddressT addr, DataT data) {
   if (addr < 0x2000) {
     internal_[addr & 0x7FF] = data;
   } else if (addr < 0x4000) {
-    // std::cerr << "writing to ppu reg" << std::endl;
     ppu_reg_.write(CName(addr & 0x07), data);
+  } else if (addr == 0x4014) {
+    std::cout << "OAM DMA from " << +ppu_reg_.oamAddr() << std::endl;
+    AddressT base = static_cast<AddressT>(data) << 8;
+    uint8_t oam_base = ppu_reg_.oamAddr();
+    for (int i = 0; i < ppu_oam_.size(); ++i) {
+      ppu_oam_[oam_base + i] = internal_[base | i];
+    }
+    ppu_reg_.signalOamDma();
+
   } else if (addr < 0x4020) {
     // APU and I/O registers
   } else if (addr < 0x6000) {
@@ -72,9 +80,8 @@ void PPUMap::write(AddressT addr, DataT data) {
     // TODO(oren): illegal if this pattern table is in cartridge ROM,
     // but it might be CHRRAM? how does this work?
   } else if (addr < 0x3F00) {
-    // NOTE(oren): not sure whether or when this normally happens
     addr = mirror_vram_addr(addr);
-    cart_.chr_rom_[addr] = data;
+    nametable_[addr] = data;
   } else {
     palette_[addr & 0x1F] = data;
   }
@@ -91,8 +98,6 @@ PPUMap::DataT PPUMap::read(AddressT addr) {
     addr = mirror_vram_addr(addr);
     result = nametable_[addr];
   } else {
-    // TODO(oren): this should be accessible from the register object
-    // or from the ppu or whatever
     result = palette_[addr & 0x1F];
   }
   return result;
