@@ -1,8 +1,8 @@
 #pragma once
 
 #include "cartridge.hpp"
+#include "joypad.h"
 #include "memory.hpp"
-// #include "ppu.hpp"
 #include "ppu_registers.hpp"
 
 #include <array>
@@ -14,8 +14,8 @@ public:
   using DataT = uint8_t;
 
   explicit NROM(cart::Cartridge &c, vid::Registers &reg,
-                std::array<DataT, 0x100> &oam)
-      : cart_(c), ppu_reg_(reg), ppu_oam_(oam) {}
+                std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
+      : cart_(c), ppu_reg_(reg), ppu_oam_(oam), joypad_(pad) {}
   ~NROM() = default;
 
   constexpr static size_t size = 1ul << (sizeof(AddressT) * 8);
@@ -28,6 +28,7 @@ private:
   std::array<DataT, 0x800> internal_{};
   vid::Registers &ppu_reg_;
   std::array<DataT, 0x100> &ppu_oam_;
+  ctrl::JoyPad &joypad_;
 };
 
 class PPUMap : public mem::Mapper {

@@ -29,20 +29,22 @@ void Registers::write(CName r, uint8_t val) {
     }
     addr_latch_ = !addr_latch_;
   } else if (r == PPUADDR) {
+    // std::cout << +val << std::endl;
     if (!addr_latch_) {
       vram_addr_ = 0x0000;
       vram_addr_ |= val;
       vram_addr_ <<= 8;
     } else {
       vram_addr_ |= val;
+      // std::cout << "PPU VRAM Addr: " << std::hex << +vram_addr_ << std::dec
+      //           << std::endl;
     }
     addr_latch_ = !addr_latch_;
   } else if (r == PPUDATA) {
     write_pending_ = true;
-  } else if (r == PPUMASK) {
-    std::cout << "Write PPU Mask: " << std::hex << +val << std::dec
-              << std::endl;
-  }
+  } // else if (r == PPUMASK) {
+
+  // }
 
   // TODO(oren): control flow...
   bool gen_nmi = vBlankNMI();
@@ -79,11 +81,14 @@ uint8_t Registers::read(CName r) {
     // the incremented address
     read_pending_ = true;
 
-    std::cerr << "gonna read from ppu " << std::hex << +vram_addr_ << std::endl;
+    // std::cerr << "read from PPUDATA: " << std::hex << +vram_addr_ << ": "
+    //           << std::dec << +regs_[PPUDATA] << std::endl;
 
     // TODO(oren): something special for palette (i.e. vram_add 0x3F00 -
     // 0x3FFF) need to be able to place a byte directly into PPUDATA and
     // return it
+
+    result = regs_[PPUDATA];
   }
   return result;
 }

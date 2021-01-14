@@ -12,15 +12,19 @@ void NROM::write(AddressT addr, DataT data) {
   } else if (addr < 0x4000) {
     ppu_reg_.write(CName(addr & 0x07), data);
   } else if (addr == 0x4014) {
-    std::cout << "OAM DMA from " << +ppu_reg_.oamAddr() << std::endl;
     AddressT base = static_cast<AddressT>(data) << 8;
     uint8_t oam_base = ppu_reg_.oamAddr();
     for (int i = 0; i < ppu_oam_.size(); ++i) {
       ppu_oam_[oam_base + i] = internal_[base | i];
     }
     ppu_reg_.signalOamDma();
-
+  } else if (addr == 0x4016) {
+    // controller 1
+    joypad_.toggleStrobe();
+  } else if (addr == 0x4017) {
+    // controller 2
   } else if (addr < 0x4020) {
+    // std::cout << "I/O WRITE: " << std::hex << addr << std::dec << std::endl;
     // APU and I/O registers
   } else if (addr < 0x6000) {
     // god only knows...
@@ -50,16 +54,11 @@ NROM::DataT NROM::read(AddressT addr) {
   if (addr < 0x2000) {
     result = internal_[addr & 0x7FF];
   } else if (addr < 0x4000) {
-    // std::cerr << "reading from ppu reg " << std::hex << +addr << std::endl;
-    // TODO(oren): I think it's safe to assume that we'll need some special
-    // logic here, pending my learning what these actually do LOL
-
     result = ppu_reg_.read(CName(addr & 0x07));
-    // break 0xc7af
-    // if (addr == 0x2002) {
-    //   std::cout << +CName(addr & 0x07) << " " << +result << std::endl;
-    // }
-
+  } else if (addr == 0x4016) {
+    result = joypad_.readNext();
+  } else if (addr == 0x4017) {
+    // controller 2
   } else if (addr < 0x4020) {
     // APU and I/O
   } else if (addr < 0x6000) {
@@ -73,7 +72,7 @@ NROM::DataT NROM::read(AddressT addr) {
     result = cart_.prg_rom_[addr & (cart_.prgRomSize - 1)];
   }
   return result;
-}
+} // namespace mapper
 
 void PPUMap::write(AddressT addr, DataT data) {
   if (addr < 0x2000) {

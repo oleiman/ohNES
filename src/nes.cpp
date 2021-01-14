@@ -2,6 +2,7 @@
 #include "cartridge.hpp"
 #include "cpu.hpp"
 #include "debugger.hpp"
+#include "joypad.h"
 #include "mapper.hpp"
 #include "memory.hpp"
 #include "ppu.hpp"
@@ -16,6 +17,8 @@
 
 using cart::Cartridge;
 using cpu::M6502;
+using ctrl::Button;
+using ctrl::JoyPad;
 using dbg::Debugger;
 using mapper::NROM;
 using mapper::PPUMap;
@@ -89,30 +92,26 @@ int main(int argc, char **argv) {
   // be updated after construction, but this leaves the CPU/PPU in an unuseable
   // state, which just feels a little gross.
   Registers ppu_reg;
+
+  JoyPad joypad;
   // std::array<uint8_t, 0x800> cpu_mem{};
-  std::array<uint8_t, 256> ppu_oam;
-  NROM cpu_map(c, ppu_reg, ppu_oam);
-  PPUMap ppu_map(c, ppu_oam);
+  NROM cpu_map(c, ppu_reg, ppu_reg.oam(), joypad);
+  PPUMap ppu_map(c, ppu_reg.oam());
 
   // TODO(oren): I think I'd actually like to move this inside the cpu, giving
   // access to debugger and potentially logging. Would still need the callback
   // interface, but that's only to drive other components. The counter itself
   // could just get incremented in a wrapper or something
-  int cycles = 0;
   M6502 cpu(cpu_map, false);
 
   auto ppu = PPU(ppu_map, cpu.nmiPin(), ppu_reg);
   ppu.showPatternTable();
-  auto tick = [&]() {
-    ppu.step(3);
-    ++cycles;
-  };
-  cpu.registerClockCallback(tick);
-
-  // automation mode, skips over the ppu check in nestest
-  // cpu.initPc(0xC000);
 
   cpu.reset();
+
+  // automation mode, do the reset things, but then immediately set PC to the
+  // beginning of the tests
+  // cpu.reset(0xC000);
 
   Debugger d(true, false);
 
@@ -127,16 +126,81 @@ int main(int argc, char **argv) {
         std::cerr << "Quitting" << std::endl;
         quit = true;
         break;
+      case SDL_KEYDOWN:
+        switch (event.key.keysym.sym) {
+        case SDLK_a:
+          joypad.pressButton(Button::A);
+          break;
+        case SDLK_s:
+          joypad.pressButton(Button::B);
+          break;
+        case SDLK_q:
+          joypad.pressButton(Button::Select);
+          break;
+        case SDLK_w:
+          joypad.pressButton(Button::Start);
+          break;
+        case SDLK_UP:
+          joypad.pressButton(Button::Up);
+          break;
+        case SDLK_DOWN:
+          joypad.pressButton(Button::Down);
+          break;
+        case SDLK_LEFT:
+          joypad.pressButton(Button::Left);
+          break;
+        case SDLK_RIGHT:
+          joypad.pressButton(Button::Right);
+          break;
+        default:
+          std::cout << +event.key.keysym.sym << std::endl;
+          break;
+        }
+        break;
+      case SDL_KEYUP:
+        switch (event.key.keysym.sym) {
+        case SDLK_a:
+          joypad.releaseButton(Button::A);
+          break;
+        case SDLK_s:
+          joypad.releaseButton(Button::B);
+          break;
+        case SDLK_q:
+          joypad.releaseButton(Button::Select);
+          break;
+        case SDLK_w:
+          joypad.releaseButton(Button::Start);
+          break;
+        case SDLK_UP:
+          joypad.releaseButton(Button::Up);
+          break;
+        case SDLK_DOWN:
+          joypad.releaseButton(Button::Down);
+          break;
+        case SDLK_LEFT:
+          joypad.releaseButton(Button::Left);
+          break;
+        case SDLK_RIGHT:
+          joypad.releaseButton(Button::Right);
+          break;
+        default:
+          std::cout << +event.key.keysym.sym << std::endl;
+          break;
+        }
+        break;
       }
     }
 
     try {
-      // cpu.debugStep(d);
-      cpu.step();
+      // auto c = cpu.debugStep(d);
+      auto c = cpu.step();
+
+      // (void)c;
+      ppu.step(c * 3);
     } catch (std::exception &e) {
       std::cerr << e.what() << std::endl;
-      std::cerr << "Cycles: " << +cycles << std::endl;
-      std::cerr << std::hex << "PC: 0x" << +cpu.pc() << std::endl;
+      std::cerr << "Cycles: " << cpu.state().cycle << std::endl;
+      std::cerr << std::hex << "PC: 0x" << +cpu.state().pc << std::endl;
       quit = true;
       SDL_Delay(SCREEN_DELAY);
     }
@@ -146,14 +210,16 @@ int main(int argc, char **argv) {
     // a little weird and rendering may suffer
 
     if (cpu.nmiPending() && ppu_reg.showBackground()) {
-      std::cout << "UPDATE SCREEN" << std::endl;
+      // std::cout << "UPDATE SCREEN" << std::endl;
       ppu.renderBackground();
+      ppu.renderSprites();
       SDL_UpdateTexture(texture, nullptr, ppu.frameBuffer().data(),
                         vid::WIDTH * 3);
       SDL_RenderClear(renderer);
       SDL_RenderCopy(renderer, texture, nullptr, nullptr);
       SDL_RenderPresent(renderer);
-      SDL_Delay(SCREEN_DELAY);
+      // SDL_Delay(2);
+      // SDL_Delay(SCREEN_DELAY);
     }
   }
 

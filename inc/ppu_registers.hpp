@@ -94,7 +94,8 @@ public:
   bool handleNmi();
 
   void signalOamDma();
-  bool oamCycles();
+  uint16_t oamCycles();
+  std::array<uint8_t, 256> &oam() { return oam_; }
 
 private:
   std::array<uint8_t, 8> regs_{};
@@ -105,6 +106,7 @@ private:
   bool read_pending_ = false;
   bool nmi_pending_ = false;
   uint16_t oam_cycles_ = 0;
+  std::array<uint8_t, 256> oam_{};
 
   const static std::array<bool, 8> Writeable;
   const static std::array<bool, 8> Readable;
@@ -187,7 +189,7 @@ inline bool Registers::handleNmi() {
 
 // TODO(oren): handle 514 (odd CPU cycle) case
 inline void Registers::signalOamDma() { oam_cycles_ = 513 * 3; }
-inline bool Registers::oamCycles() {
+inline uint16_t Registers::oamCycles() {
   auto v = oam_cycles_;
   oam_cycles_ = 0;
   return v;

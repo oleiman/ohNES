@@ -8,9 +8,22 @@ using std::to_string;
 
 namespace vid {
 
-void PPU::step(uint8_t cycles) {
+void PPU::dumbStep(uint16_t cycles) {
+  if (reg_.handleNmi()) {
+    std::cout << "out of band nmi" << std::endl;
+    nmi_();
+  }
+  while (--cycles > 0) {
+    tick();
+    if (scanline_ == 241) {
+      reg_.setVBlankStarted();
+    }
+  }
+}
+void PPU::step(uint16_t cycles) {
 
   if (reg_.handleNmi()) {
+    std::cout << "out of band nmi" << std::endl;
     nmi_();
   }
 
@@ -20,7 +33,6 @@ void PPU::step(uint8_t cycles) {
 
   while (cycles-- > 0) {
     if (scanline_ >= 262) {
-      std::cout << "clear vblank " << std::dec << +scanline_ << std::endl;
       reg_.clearVBlankStarted();
       scanline_ = 0;
     }
@@ -87,10 +99,8 @@ void PPU::visibleLine() {
 void PPU::vBlankLine() {
   if (cycle_ == 1 && scanline_ == 241) {
     if (reg_.vBlankNMI()) {
-      std::cerr << "generate nmi-->";
       nmi_();
     }
-    std::cerr << "setting vblank" << std::endl;
     reg_.setVBlankStarted();
   }
 
@@ -101,6 +111,7 @@ void PPU::vBlankLine() {
   // this a bit more
   if (odd) {
     if (reg_.readPending()) {
+      // std::cout << "service read" << std::endl;
       auto addr = reg_.vRamAddr();
       reg_.putData(readByte(addr));
     } else if (reg_.writePending()) {
@@ -123,6 +134,12 @@ std::array<uint8_t, 4> PPU::bgPalette(uint16_t base, uint16_t tile_x,
   uint8_t shift = (meta_y * 2 + meta_x) << 1;
   uint8_t pidx = ((at_entry >> shift) & 0b11) << 2;
   return {readByte(0x3f00), readByte(0x3f01 + pidx), readByte(0x3f02 + pidx),
+          readByte(0x3f03 + pidx)};
+}
+
+std::array<uint8_t, 4> PPU::spritePalette(uint8_t pidx) {
+  pidx <<= 2;
+  return {0, readByte(0x3f01 + pidx), readByte(0x3f02 + pidx),
           readByte(0x3f03 + pidx)};
 }
 
