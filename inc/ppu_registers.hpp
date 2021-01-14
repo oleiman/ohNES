@@ -3,6 +3,10 @@
 #include <array>
 #include <cstdint>
 
+// TODO(oren): Split this up. `Registers` is acting as both access point for PPU
+// Registers *AND* a signalling medium between the CPU memory mapper and the
+// PPU. If you squint, this is the same thing, but I'd like to tease some of
+// that functionality apart. TBD.
 namespace vid {
 class Registers {
   static const uint8_t BIT0 = 0b00000001;
@@ -60,11 +64,6 @@ public:
   /*END PPUMASK Accessors*/
 
   /*** PPUSTATUS Accessors ***/
-  // TODO(oren): stores 5 lsb previously written into a PPU
-  // not sure whether we need to do anything with these
-  // In general, some work is required here as the bits of the
-  // status register appear to be set by the PPU in response to
-  // certain events, e.g. VBlank start/end
   bool spriteOverflow();
   bool spriteZeroHit();
   bool vBlankStarted();
@@ -80,14 +79,9 @@ public:
   /*END Address Accessors ***/
 
   /*** Data Port ***/
-  // NOTE(oren): the way I'm thinking about this, the read/write interface
-  // is for the CPU only, whereas these accessors are for the PPU
-  // With video ram increment happening only on the PPU accesses
-  // on the other hand, PPU needs to know somehow whether the CPU is reading
-  // or writing, when to flush its buffer, etc
 
   uint8_t getData();
-  // this is like filling the internal buffer
+  // place a byte in the PPU "internal buffer"
   void putData(uint8_t);
   bool writePending();
   bool readPending();
@@ -95,7 +89,6 @@ public:
 
   void signalOamDma();
   uint16_t oamCycles();
-  std::array<uint8_t, 256> &oam() { return oam_; }
 
 private:
   std::array<uint8_t, 8> regs_{};
@@ -106,7 +99,6 @@ private:
   bool read_pending_ = false;
   bool nmi_pending_ = false;
   uint16_t oam_cycles_ = 0;
-  std::array<uint8_t, 256> oam_{};
 
   const static std::array<bool, 8> Writeable;
   const static std::array<bool, 8> Readable;
@@ -163,36 +155,13 @@ inline void Registers::clearVBlankStarted() { regs_[PPUSTATUS] &= ~BIT7; }
 inline uint8_t Registers::oamAddr() { return regs_[OAMADDR]; }
 inline uint8_t Registers::oamData() { return regs_[OAMDATA]; }
 
-// TODO(oren): logic for reading between the two prescribed register writes?
-// again, this should probably go inside the PPU
 inline uint16_t Registers::scrollAddr() { return scroll_addr_; }
 inline uint16_t Registers::vRamAddr() { return vram_addr_; }
 
-inline uint8_t Registers::getData() {
-  write_pending_ = false;
-  vram_addr_ += vRamAddrInc();
-  return regs_[PPUDATA];
-}
-
-inline void Registers::putData(uint8_t data) {
-  read_pending_ = false;
-  vram_addr_ += vRamAddrInc();
-  regs_[PPUDATA] = data;
-}
 inline bool Registers::writePending() { return write_pending_; }
 inline bool Registers::readPending() { return read_pending_; }
-inline bool Registers::handleNmi() {
-  auto tmp = nmi_pending_;
-  nmi_pending_ = false;
-  return tmp;
-}
 
 // TODO(oren): handle 514 (odd CPU cycle) case
 inline void Registers::signalOamDma() { oam_cycles_ = 513 * 3; }
-inline uint16_t Registers::oamCycles() {
-  auto v = oam_cycles_;
-  oam_cycles_ = 0;
-  return v;
-}
 
 } // namespace vid

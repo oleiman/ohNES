@@ -2,10 +2,12 @@
 #include "cartridge.hpp"
 #include "cpu.hpp"
 #include "debugger.hpp"
-#include "joypad.h"
+#include "joypad.hpp"
 #include "mapper.hpp"
 #include "memory.hpp"
 #include "ppu.hpp"
+
+#include "time.h"
 
 #include <SDL.h>
 
@@ -73,39 +75,15 @@ int main(int argc, char **argv) {
     std::cerr << "BAD FILE" << std::endl;
     exit(1);
   }
-  Cartridge c(infile);
+  Cartridge cartridge(infile);
   infile.close();
-  std::cerr << c << std::endl;
-
-  // TODO(oren): ugh, initialization
-  // cpu mapper needs ref to ppu_reg
-  // ppu mapper nees ref to cpu_mem
-  // both vrams need ref to respectie mappers
-  // both cpu and ppu need refs to respective busses
-  // On top of all this, VRam template precludes any runtime
-  // mapper selection. That's probably the first thing to address.
-  // I expect everything else will fall into place after that.
-  // With current design, only solution is to have regs
-  // and cpu internal memory owned by the system, which makes
-  // absolutely no sense.
-  // Quickest mitigation would be to just store the busses as pointers to
-  // be updated after construction, but this leaves the CPU/PPU in an unuseable
-  // state, which just feels a little gross.
-  Registers ppu_reg;
+  std::cerr << cartridge << std::endl;
 
   JoyPad joypad;
-  // std::array<uint8_t, 0x800> cpu_mem{};
-  NROM cpu_map(c, ppu_reg, ppu_reg.oam(), joypad);
-  PPUMap ppu_map(c, ppu_reg.oam());
-
-  // TODO(oren): I think I'd actually like to move this inside the cpu, giving
-  // access to debugger and potentially logging. Would still need the callback
-  // interface, but that's only to drive other components. The counter itself
-  // could just get incremented in a wrapper or something
+  PPUMap ppu_map(cartridge);
+  PPU ppu(ppu_map);
+  NROM cpu_map(cartridge, ppu.registers, ppu.oam, joypad);
   M6502 cpu(cpu_map, false);
-
-  auto ppu = PPU(ppu_map, cpu.nmiPin(), ppu_reg);
-  ppu.showPatternTable();
 
   cpu.reset();
 
@@ -118,39 +96,43 @@ int main(int argc, char **argv) {
   SDL_Event event;
 
   bool quit = false;
+  auto clockStart = clock();
+  int frames = 0;
   while (!quit) {
 
     while (SDL_PollEvent(&event) != 0) {
       switch (event.type) {
       case SDL_QUIT:
-        std::cerr << "Quitting" << std::endl;
+        std::cerr << "Quitting: "
+                  << frames / ((double)(clock() - clockStart) / CLOCKS_PER_SEC)
+                  << "fps" << std::endl;
         quit = true;
         break;
       case SDL_KEYDOWN:
         switch (event.key.keysym.sym) {
         case SDLK_a:
-          joypad.pressButton(Button::A);
+          joypad.press(Button::A);
           break;
         case SDLK_s:
-          joypad.pressButton(Button::B);
+          joypad.press(Button::B);
           break;
         case SDLK_q:
-          joypad.pressButton(Button::Select);
+          joypad.press(Button::Select);
           break;
         case SDLK_w:
-          joypad.pressButton(Button::Start);
+          joypad.press(Button::Start);
           break;
         case SDLK_UP:
-          joypad.pressButton(Button::Up);
+          joypad.press(Button::Up);
           break;
         case SDLK_DOWN:
-          joypad.pressButton(Button::Down);
+          joypad.press(Button::Down);
           break;
         case SDLK_LEFT:
-          joypad.pressButton(Button::Left);
+          joypad.press(Button::Left);
           break;
         case SDLK_RIGHT:
-          joypad.pressButton(Button::Right);
+          joypad.press(Button::Right);
           break;
         default:
           std::cout << +event.key.keysym.sym << std::endl;
@@ -160,28 +142,28 @@ int main(int argc, char **argv) {
       case SDL_KEYUP:
         switch (event.key.keysym.sym) {
         case SDLK_a:
-          joypad.releaseButton(Button::A);
+          joypad.release(Button::A);
           break;
         case SDLK_s:
-          joypad.releaseButton(Button::B);
+          joypad.release(Button::B);
           break;
         case SDLK_q:
-          joypad.releaseButton(Button::Select);
+          joypad.release(Button::Select);
           break;
         case SDLK_w:
-          joypad.releaseButton(Button::Start);
+          joypad.release(Button::Start);
           break;
         case SDLK_UP:
-          joypad.releaseButton(Button::Up);
+          joypad.release(Button::Up);
           break;
         case SDLK_DOWN:
-          joypad.releaseButton(Button::Down);
+          joypad.release(Button::Down);
           break;
         case SDLK_LEFT:
-          joypad.releaseButton(Button::Left);
+          joypad.release(Button::Left);
           break;
         case SDLK_RIGHT:
-          joypad.releaseButton(Button::Right);
+          joypad.release(Button::Right);
           break;
         default:
           std::cout << +event.key.keysym.sym << std::endl;
@@ -196,7 +178,7 @@ int main(int argc, char **argv) {
       auto c = cpu.step();
 
       // (void)c;
-      ppu.step(c * 3);
+      ppu.step(c * 3, cpu.nmiPin());
     } catch (std::exception &e) {
       std::cerr << e.what() << std::endl;
       std::cerr << "Cycles: " << cpu.state().cycle << std::endl;
@@ -209,7 +191,7 @@ int main(int argc, char **argv) {
     // cpu cycles we're still technically instruction stepped, so this might get
     // a little weird and rendering may suffer
 
-    if (cpu.nmiPending() && ppu_reg.showBackground()) {
+    if (cpu.nmiPin() && ppu.registers.showBackground()) {
       // std::cout << "UPDATE SCREEN" << std::endl;
       ppu.renderBackground();
       ppu.renderSprites();
@@ -218,7 +200,8 @@ int main(int argc, char **argv) {
       SDL_RenderClear(renderer);
       SDL_RenderCopy(renderer, texture, nullptr, nullptr);
       SDL_RenderPresent(renderer);
-      // SDL_Delay(2);
+      ++frames;
+      // SDL_Delay(10);
       // SDL_Delay(SCREEN_DELAY);
     }
   }
@@ -227,6 +210,8 @@ int main(int argc, char **argv) {
   SDL_DestroyTexture(texture);
   SDL_DestroyWindow(window);
   SDL_Quit();
+  std::cout << +cpu.state().cycle << std::endl;
+  std::cout << "Frames: " << frames << std::endl;
 
   return 0;
 }

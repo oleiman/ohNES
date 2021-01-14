@@ -8,36 +8,26 @@ using std::to_string;
 
 namespace vid {
 
-void PPU::dumbStep(uint16_t cycles) {
-  if (reg_.handleNmi()) {
-    std::cout << "out of band nmi" << std::endl;
-    nmi_();
-  }
-  while (--cycles > 0) {
-    tick();
-    if (scanline_ == 241) {
-      reg_.setVBlankStarted();
-    }
-  }
-}
-void PPU::step(uint16_t cycles) {
+void PPU::step(uint16_t cycles, bool &nmi) {
 
-  if (reg_.handleNmi()) {
-    std::cout << "out of band nmi" << std::endl;
-    nmi_();
+  if (registers.handleNmi()) {
+    nmi = true;
   }
 
-  // TODO(oren): this leads to a BRK at some point and we get burned
-  // trying to write to cartridge ROM
-  cycles += reg_.oamCycles();
+  cycles += registers.oamCycles();
 
   while (cycles-- > 0) {
-    if (scanline_ >= 262) {
-      reg_.clearVBlankStarted();
+    if (cycle_ == 1 && scanline_ == 241) {
+      if (registers.vBlankNMI()) {
+        nmi = true;
+      }
+      registers.setVBlankStarted();
+    } else if (scanline_ >= 262) {
+      registers.clearVBlankStarted();
       scanline_ = 0;
     }
 
-    if (!(reg_.showBackground() || reg_.showSprites())) {
+    if (!(registers.showBackground() || registers.showSprites())) {
       vBlankLine();
     } else if (scanline_ < 240) {
       visibleLine();
@@ -55,14 +45,13 @@ void PPU::step(uint16_t cycles) {
 }
 
 void PPU::visibleLine() {
-  // std::cerr << " render a visible line" << std::endl;
   if (cycle_ == 0) {
     tick();
     return;
   }
 
-  if (reg_.writePending() || reg_.readPending()) {
-    if (reg_.writePending()) {
+  if (registers.writePending() || registers.readPending()) {
+    if (registers.writePending()) {
       throw std::runtime_error("CPU writing during non-VBLANK line");
     } else {
       throw std::runtime_error("CPU reading during non-VBLANK line");
@@ -97,30 +86,93 @@ void PPU::visibleLine() {
 }
 
 void PPU::vBlankLine() {
-  if (cycle_ == 1 && scanline_ == 241) {
-    if (reg_.vBlankNMI()) {
-      nmi_();
-    }
-    reg_.setVBlankStarted();
-  }
-
   bool odd = cycle_ & 0x01;
 
   // TODO(oren): service CPU memory requests
   // again only on odd cycles to account for 2-cycle cost. may need to look into
   // this a bit more
   if (odd) {
-    if (reg_.readPending()) {
+    if (registers.readPending()) {
       // std::cout << "service read" << std::endl;
-      auto addr = reg_.vRamAddr();
-      reg_.putData(readByte(addr));
-    } else if (reg_.writePending()) {
-      auto addr = reg_.vRamAddr();
-      auto data = reg_.getData();
+      auto addr = registers.vRamAddr();
+      registers.putData(readByte(addr));
+    } else if (registers.writePending()) {
+      auto addr = registers.vRamAddr();
+      auto data = registers.getData();
       writeByte(addr, data);
     }
   }
   tick();
+}
+
+void PPU::renderBackground() {
+  auto bank = registers.backgroundPTableAddr();
+  auto nt_base = registers.baseNametableAddr();
+
+  for (int i = 0; i < 0x03c0; ++i) {
+    auto tile = static_cast<uint16_t>(readByte(nt_base + i));
+    auto tile_x = i % 32;
+    auto tile_y = i / 32;
+    auto palette = bgPalette(nt_base, tile_x, tile_y);
+    auto tile_base = bank + tile * 16;
+    for (int y = 0; y < 8; ++y) {
+      auto lower = readByte(tile_base + y);
+      auto upper = readByte(tile_base + y + 8);
+      for (int x = 7; x >= 0; x--) {
+        auto value = ((upper & 1) << 1) | (lower & 1);
+        upper >>= 1;
+        lower >>= 1;
+        uint8_t rgb = palette[value];
+        set_pixel(tile_x * 8 + x, tile_y * 8 + y, SystemPalette[rgb]);
+      }
+    }
+  }
+}
+
+void PPU::renderSprites() {
+  for (int i = 0; i < oam.size(); i += 4) {
+    // uint8_t sprite_idx = i >> 2;
+    uint8_t tile_idx = oam[i + 1];
+    uint8_t sprite_x = oam[i + 3];
+    uint8_t sprite_y = oam[i];
+    uint8_t attr = oam[i + 2];
+    uint8_t pidx = attr & 0b11;
+    bool flip_horiz = attr & 0b01000000;
+    bool flip_vert = attr & 0b10000000;
+
+    auto palette = spritePalette(pidx);
+    auto bank = registers.spritePTableAddr();
+    auto tile_base = bank + tile_idx * 16;
+
+    for (int y = 0; y < 8; ++y) {
+      auto lower = readByte(tile_base + y);
+      auto upper = readByte(tile_base + y + 8);
+      for (int x = 7; x >= 0; x--) {
+        auto value = ((upper & 1) << 1) | (lower & 1);
+        upper >>= 1;
+        lower >>= 1;
+        if (value == 0) {
+          continue;
+        }
+        uint8_t rgb = palette[value];
+        int px = sprite_x + x;
+        int py = sprite_y + y;
+
+        if (!flip_horiz && !flip_vert) {
+          (void)px;
+          (void)py;
+        } else if (flip_horiz && flip_vert) {
+          px = sprite_x + (7 - x);
+          py = sprite_y + (7 - y);
+        } else if (flip_horiz) {
+          px = sprite_x + (7 - x);
+        } else if (flip_vert) {
+          py = sprite_y + (7 - y);
+        }
+        set_pixel(px, py, SystemPalette[rgb]);
+      }
+    }
+  }
 }
 
 std::array<uint8_t, 4> PPU::bgPalette(uint16_t base, uint16_t tile_x,
@@ -137,17 +189,69 @@ std::array<uint8_t, 4> PPU::bgPalette(uint16_t base, uint16_t tile_x,
           readByte(0x3f03 + pidx)};
 }
 
-std::array<uint8_t, 4> PPU::spritePalette(uint8_t pidx) {
+inline std::array<uint8_t, 4> PPU::spritePalette(uint8_t pidx) {
   pidx <<= 2;
-  return {0, readByte(0x3f01 + pidx), readByte(0x3f02 + pidx),
-          readByte(0x3f03 + pidx)};
+  return {0, readByte(0x3f11 + pidx), readByte(0x3f12 + pidx),
+          readByte(0x3f13 + pidx)};
 }
 
-inline void PPU::tick() {
+void PPU::set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb) {
+  int pi = y * WIDTH + x;
+  for (int i = 0; i < 3; ++i) {
+    framebuf_[pi][i] = rgb[i];
+  }
+}
+
+void PPU::tick() {
   ++cycle_;
   if (cycle_ == 341) {
     ++scanline_;
     cycle_ = 0;
+  }
+}
+
+void PPU::showPatternTable() {
+  uint8_t x = 0;
+  uint8_t y = 0;
+  for (int bank = 0; bank < 2; ++bank) {
+    for (int i = 0; i < 256; ++i) {
+      showTile(x, y, bank, i);
+      x += 8;
+      if (x == 0) {
+        y += 8;
+      }
+    }
+  }
+}
+
+void PPU::showTile(uint8_t x, uint8_t y, uint8_t bank, uint8_t tile) {
+  AddressT base = bank * 0x1000;
+  base += tile * 0x10;
+  for (int yi = y; yi < y + 8; ++yi) {
+    uint8_t lower = readByte(base);
+    uint8_t upper = readByte(base + 8);
+    for (int xi = x + 7; xi >= x; --xi) {
+      uint8_t pi = ((upper & 1) << 1) | (lower & 1);
+      upper >>= 1;
+      lower >>= 1;
+      // TODO(oren): these colors are totally arbitrary
+      // need to hook this up to the actual palette
+      switch (pi) {
+      case 0:
+        set_pixel(xi, yi, SystemPalette[0x01]);
+        break;
+      case 1:
+        set_pixel(xi, yi, SystemPalette[0x23]);
+        break;
+      case 2:
+        set_pixel(xi, yi, SystemPalette[0x27]);
+        break;
+      case 3:
+        set_pixel(xi, yi, SystemPalette[0x30]);
+        break;
+      }
+    }
+    ++base;
   }
 }
 

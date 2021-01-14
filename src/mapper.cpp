@@ -24,28 +24,19 @@ void NROM::write(AddressT addr, DataT data) {
   } else if (addr == 0x4017) {
     // controller 2
   } else if (addr < 0x4020) {
-    // std::cout << "I/O WRITE: " << std::hex << addr << std::dec << std::endl;
     // APU and I/O registers
   } else if (addr < 0x6000) {
     // god only knows...
     // apparently rarely used
   } else if (addr < 0x8000) {
     // cartridge VRAM/VROM
-    // I believe PPU 0x0000 - 0x2000 maps here
     if (cart_.hasPrgRam) {
       cart_.prg_ram_[addr & (cart_.prgRamSize - 1)] = data;
     }
   } else { // 0x8000 <= addr < 0x10000
-    // cartridge rom, also not allowed, I assume
-    // presumably most existing roms won't break the rules, but
-    // we should probably panic here for debugging purposes
-    // cart_.prg_rom_[addr & (cart_.prgRomSize - 1)] = data;
     std::stringstream ss;
     ss << "WRITE TO CART ROM 0x" << std::hex << addr;
-    // std::cerr << ss.str() << std::endl;
     throw std::runtime_error(ss.str());
-    // cart_.prg_rom_[addr & (cart_.prgRomSize - 1)] = data;
-    // "ATTEMPT TO WRITE TO CART ROM " << std::hex << addr << std::endl;
   }
 }
 
@@ -76,8 +67,7 @@ NROM::DataT NROM::read(AddressT addr) {
 
 void PPUMap::write(AddressT addr, DataT data) {
   if (addr < 0x2000) {
-    // TODO(oren): illegal if this pattern table is in cartridge ROM,
-    // but it might be CHRRAM? how does this work?
+    // TODO(oren): pretty sure this is illegal
   } else if (addr < 0x3F00) {
     addr = mirror_vram_addr(addr);
     nametable_[addr] = data;
@@ -89,10 +79,9 @@ void PPUMap::write(AddressT addr, DataT data) {
 PPUMap::DataT PPUMap::read(AddressT addr) {
   DataT result = 0x00;
   if (addr < 0x2000) {
-    // NOTE(oren): this is the pattern table. it should always be *somewhere*...
     if (cart_.chrRomSize > 0) {
       result = cart_.chr_rom_[addr];
-    }
+    } // else ???
   } else if (addr < 0x3F00) {
     addr = mirror_vram_addr(addr);
     result = nametable_[addr];
