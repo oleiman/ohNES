@@ -9,4 +9,6 @@ export CXX=clang++
 cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 make -j10
 
+cp compile_commands.json ../
+
 popd

@@ -14,6 +14,12 @@ class PPU {
   using AddressT = uint16_t;
   using DataT = uint8_t;
   using FrameBuffer = std::array<std::array<uint8_t, 3>, WIDTH * HEIGHT>;
+  struct Viewable {
+    uint8_t x_min;
+    uint8_t y_min;
+    uint8_t x_max;
+    uint8_t y_max;
+  };
 
 public:
   Registers registers;
@@ -26,6 +32,8 @@ public:
   void step(uint16_t cycles, bool &nmi);
   void renderSprites();
   void renderBackground();
+  void renderNametable(uint16_t nt_base, Viewable const &view, int shift_x,
+                       int shift_y);
 
   // For debugging and ROM exploratory purposes
   void showTile(uint8_t x, uint8_t y, uint8_t bank, uint8_t tile);

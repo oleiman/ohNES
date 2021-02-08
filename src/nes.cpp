@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
 
   SDL_Window *window = nullptr;
   SDL_Renderer *renderer = nullptr;
+  std::array<std::array<uint8_t, 3>, vid::WIDTH * vid::HEIGHT> fb;
 
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "SDL_Init Error",
@@ -195,8 +196,8 @@ int main(int argc, char **argv) {
       // std::cout << "UPDATE SCREEN" << std::endl;
       ppu.renderBackground();
       ppu.renderSprites();
-      SDL_UpdateTexture(texture, nullptr, ppu.frameBuffer().data(),
-                        vid::WIDTH * 3);
+      std::copy(ppu.frameBuffer().begin(), ppu.frameBuffer().end(), fb.begin());
+      SDL_UpdateTexture(texture, nullptr, fb.data(), vid::WIDTH * 3);
       SDL_RenderClear(renderer);
       SDL_RenderCopy(renderer, texture, nullptr, nullptr);
       SDL_RenderPresent(renderer);

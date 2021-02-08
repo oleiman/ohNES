@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <assert.h>
 #include <cstdint>
 
 // TODO(oren): Split this up. `Registers` is acting as both access point for PPU
@@ -66,6 +67,7 @@ public:
   /*** PPUSTATUS Accessors ***/
   bool spriteOverflow();
   bool spriteZeroHit();
+  void setSpriteZeroHit(bool val);
   bool vBlankStarted();
   void setVBlankStarted();
   void clearVBlankStarted();
@@ -75,6 +77,8 @@ public:
   uint8_t oamAddr();
   uint8_t oamData();
   uint16_t scrollAddr();
+  uint8_t scrollX();
+  uint8_t scrollY();
   uint16_t vRamAddr();
   /*END Address Accessors ***/
 
@@ -147,6 +151,12 @@ inline bool Registers::emphasizeBlue() { return regs_[PPUMASK] & BIT7; }
 
 inline bool Registers::spriteOverflow() { return regs_[PPUSTATUS] & BIT5; }
 inline bool Registers::spriteZeroHit() { return regs_[PPUSTATUS] & BIT6; }
+inline void Registers::setSpriteZeroHit(bool val) {
+  // if the new and current values differ, flip the appropriate bit
+  if (val != spriteZeroHit()) {
+    regs_[PPUSTATUS] ^= (1 << 6);
+  }
+}
 inline bool Registers::vBlankStarted() { return regs_[PPUSTATUS] & BIT7; }
 
 inline void Registers::setVBlankStarted() { regs_[PPUSTATUS] |= BIT7; }
@@ -156,6 +166,8 @@ inline uint8_t Registers::oamAddr() { return regs_[OAMADDR]; }
 inline uint8_t Registers::oamData() { return regs_[OAMDATA]; }
 
 inline uint16_t Registers::scrollAddr() { return scroll_addr_; }
+inline uint8_t Registers::scrollX() { return (scroll_addr_ >> 8) & 0xFF; }
+inline uint8_t Registers::scrollY() { return scroll_addr_ & 0xFF; }
 inline uint16_t Registers::vRamAddr() { return vram_addr_; }
 
 inline bool Registers::writePending() { return write_pending_; }

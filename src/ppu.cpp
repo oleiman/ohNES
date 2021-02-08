@@ -22,8 +22,10 @@ void PPU::step(uint16_t cycles, bool &nmi) {
         nmi = true;
       }
       registers.setVBlankStarted();
+      registers.setSpriteZeroHit(false);
     } else if (scanline_ >= 262) {
       registers.clearVBlankStarted();
+      registers.setSpriteZeroHit(false);
       scanline_ = 0;
     }
 
@@ -106,8 +108,23 @@ void PPU::vBlankLine() {
 }
 
 void PPU::renderBackground() {
+  auto primary_nt = registers.baseNametableAddr();
+  auto secondary_nt = 0x2000 + ((primary_nt - 0x2000 + 0x400) % 0x800);
+  if (primary_nt > 0x2400) {
+    std::cout << "holy cow" << std::endl;
+  }
+
+  // TODO(oren): not quite right for vertical scroll
+  renderNametable(primary_nt,
+                  {registers.scrollX(), registers.scrollY(), 255, 239},
+                  -registers.scrollX(), -registers.scrollY());
+  renderNametable(secondary_nt, {0, 0, registers.scrollX(), 239},
+                  255 - registers.scrollX(), 0);
+}
+
+void PPU::renderNametable(uint16_t nt_base, Viewable const &view, int shift_x,
+                          int shift_y) {
   auto bank = registers.backgroundPTableAddr();
-  auto nt_base = registers.baseNametableAddr();
 
   for (int i = 0; i < 0x03c0; ++i) {
     auto tile = static_cast<uint16_t>(readByte(nt_base + i));
@@ -123,7 +140,15 @@ void PPU::renderBackground() {
         upper >>= 1;
         lower >>= 1;
         uint8_t rgb = palette[value];
-        set_pixel(tile_x * 8 + x, tile_y * 8 + y, SystemPalette[rgb]);
+        uint8_t pixel_x = tile_x * 8 + x;
+        uint8_t pixel_y = tile_y * 8 + y;
+
+        if (pixel_x >= view.x_min && pixel_x <= view.x_max &&
+            pixel_y >= view.y_min && pixel_y <= view.y_max) {
+          assert((pixel_x + shift_x) < 256);
+          assert((pixel_y + shift_y) < 240);
+          set_pixel(pixel_x + shift_x, pixel_y + shift_y, SystemPalette[rgb]);
+        }
       }
     }
   }
@@ -177,10 +202,10 @@ void PPU::renderSprites() {
 
 std::array<uint8_t, 4> PPU::bgPalette(uint16_t base, uint16_t tile_x,
                                       uint16_t tile_y) {
-  uint16_t at_base = base + 0x3c0;
+  uint16_t attribute_table_base = base + 0x3c0;
   uint8_t block_x = tile_x >> 2;
   uint8_t block_y = tile_y >> 2;
-  auto at_entry = readByte(at_base + (block_y * 8 + block_x));
+  auto at_entry = readByte(attribute_table_base + (block_y * 8 + block_x));
   uint8_t meta_x = (tile_x & 0x03) >> 1;
   uint8_t meta_y = (tile_y & 0x03) >> 1;
   uint8_t shift = (meta_y * 2 + meta_x) << 1;
@@ -205,6 +230,9 @@ void PPU::set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb) {
 void PPU::tick() {
   ++cycle_;
   if (cycle_ == 341) {
+    if (registers.showSprites() && oam[0] == scanline_ && oam[3] <= cycle_) {
+      registers.setSpriteZeroHit(true);
+    }
     ++scanline_;
     cycle_ = 0;
   }
