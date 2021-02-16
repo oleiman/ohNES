@@ -27,11 +27,12 @@ public:
 
   PPU(mem::Mapper &mapper) : mapper_(mapper) {}
 
-  FrameBuffer &frameBuffer() { return framebuf_; }
+  FrameBuffer const &frameBuffer() { return framebuf_; }
 
   void step(uint16_t cycles, bool &nmi);
-  void renderSprites();
-  void renderBackground();
+  bool render();
+  bool renderSprites();
+  bool renderBackground();
   void renderNametable(uint16_t nt_base, Viewable const &view, int shift_x,
                        int shift_y);
 

@@ -107,19 +107,30 @@ void PPU::vBlankLine() {
   tick();
 }
 
-void PPU::renderBackground() {
-  auto primary_nt = registers.baseNametableAddr();
-  auto secondary_nt = 0x2000 + ((primary_nt - 0x2000 + 0x400) % 0x800);
-  if (primary_nt > 0x2400) {
-    std::cout << "holy cow" << std::endl;
-  }
+bool PPU::render() {
+  auto bg = renderBackground();
+  auto spr = renderSprites();
+  return bg || spr;
+}
 
-  // TODO(oren): not quite right for vertical scroll
-  renderNametable(primary_nt,
-                  {registers.scrollX(), registers.scrollY(), 255, 239},
-                  -registers.scrollX(), -registers.scrollY());
-  renderNametable(secondary_nt, {0, 0, registers.scrollX(), 239},
-                  255 - registers.scrollX(), 0);
+bool PPU::renderBackground() {
+  if (registers.showBackground()) {
+    auto primary_nt = registers.baseNametableAddr();
+    auto secondary_nt = 0x2000 + ((primary_nt - 0x2000 + 0x400) % 0x800);
+    if (primary_nt > 0x2400) {
+      std::cout << "holy cow" << std::endl;
+    }
+
+    // TODO(oren): not quite right for vertical scroll
+    renderNametable(primary_nt,
+                    {registers.scrollX(), registers.scrollY(), 255, 239},
+                    -registers.scrollX(), -registers.scrollY());
+    renderNametable(secondary_nt, {0, 0, registers.scrollX(), 239},
+                    255 - registers.scrollX(), 0);
+    return true;
+  } else {
+    return false;
+  }
 }
 
 void PPU::renderNametable(uint16_t nt_base, Viewable const &view, int shift_x,
@@ -154,49 +165,54 @@ void PPU::renderNametable(uint16_t nt_base, Viewable const &view, int shift_x,
   }
 }
 
-void PPU::renderSprites() {
-  for (int i = 0; i < oam.size(); i += 4) {
-    // uint8_t sprite_idx = i >> 2;
-    uint8_t tile_idx = oam[i + 1];
-    uint8_t sprite_x = oam[i + 3];
-    uint8_t sprite_y = oam[i];
-    uint8_t attr = oam[i + 2];
-    uint8_t pidx = attr & 0b11;
-    bool flip_horiz = attr & 0b01000000;
-    bool flip_vert = attr & 0b10000000;
+bool PPU::renderSprites() {
+  if (registers.showSprites()) {
+    for (int i = 0; i < oam.size(); i += 4) {
+      // uint8_t sprite_idx = i >> 2;
+      uint8_t tile_idx = oam[i + 1];
+      uint8_t sprite_x = oam[i + 3];
+      uint8_t sprite_y = oam[i];
+      uint8_t attr = oam[i + 2];
+      uint8_t pidx = attr & 0b11;
+      bool flip_horiz = attr & 0b01000000;
+      bool flip_vert = attr & 0b10000000;
 
-    auto palette = spritePalette(pidx);
-    auto bank = registers.spritePTableAddr();
-    auto tile_base = bank + tile_idx * 16;
+      auto palette = spritePalette(pidx);
+      auto bank = registers.spritePTableAddr();
+      auto tile_base = bank + tile_idx * 16;
 
-    for (int y = 0; y < 8; ++y) {
-      auto lower = readByte(tile_base + y);
-      auto upper = readByte(tile_base + y + 8);
-      for (int x = 7; x >= 0; x--) {
-        auto value = ((upper & 1) << 1) | (lower & 1);
-        upper >>= 1;
-        lower >>= 1;
-        if (value == 0) {
-          continue;
+      for (int y = 0; y < 8; ++y) {
+        auto lower = readByte(tile_base + y);
+        auto upper = readByte(tile_base + y + 8);
+        for (int x = 7; x >= 0; x--) {
+          auto value = ((upper & 1) << 1) | (lower & 1);
+          upper >>= 1;
+          lower >>= 1;
+          if (value == 0) {
+            continue;
+          }
+          uint8_t rgb = palette[value];
+          int px = sprite_x + x;
+          int py = sprite_y + y;
+
+          if (!flip_horiz && !flip_vert) {
+            (void)px;
+            (void)py;
+          } else if (flip_horiz && flip_vert) {
+            px = sprite_x + (7 - x);
+            py = sprite_y + (7 - y);
+          } else if (flip_horiz) {
+            px = sprite_x + (7 - x);
+          } else if (flip_vert) {
+            py = sprite_y + (7 - y);
+          }
+          set_pixel(px, py, SystemPalette[rgb]);
         }
-        uint8_t rgb = palette[value];
-        int px = sprite_x + x;
-        int py = sprite_y + y;
-
-        if (!flip_horiz && !flip_vert) {
-          (void)px;
-          (void)py;
-        } else if (flip_horiz && flip_vert) {
-          px = sprite_x + (7 - x);
-          py = sprite_y + (7 - y);
-        } else if (flip_horiz) {
-          px = sprite_x + (7 - x);
-        } else if (flip_vert) {
-          py = sprite_y + (7 - y);
-        }
-        set_pixel(px, py, SystemPalette[rgb]);
       }
     }
+    return true;
+  } else {
+    return false;
   }
 }
 
@@ -222,8 +238,10 @@ inline std::array<uint8_t, 4> PPU::spritePalette(uint8_t pidx) {
 
 void PPU::set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb) {
   int pi = y * WIDTH + x;
-  for (int i = 0; i < 3; ++i) {
-    framebuf_[pi][i] = rgb[i];
+  if (pi < framebuf_.size()) {
+    for (int i = 0; i < 3; ++i) {
+      framebuf_[pi][i] = rgb[i];
+    }
   }
 }
 

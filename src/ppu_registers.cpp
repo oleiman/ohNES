@@ -8,8 +8,12 @@ using std::to_string;
 namespace vid {
 void Registers::write(CName r, uint8_t val) {
   if (!Writeable[r]) {
-    throw std::runtime_error("Attempt to write read-only PPU Register " +
-                             to_string(r));
+    // throw std::runtime_error("Attempt to write read-only PPU Register " +
+    //                          to_string(r));
+    std::cerr << "WARNING: Attempt to write to read-only PPU Register " +
+                     to_string(r)
+              << std::endl;
+    return;
   }
 
   write_pending_ = false;

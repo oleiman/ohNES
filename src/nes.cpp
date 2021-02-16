@@ -3,9 +3,10 @@
 #include "cpu.hpp"
 #include "debugger.hpp"
 #include "joypad.hpp"
-#include "mapper.hpp"
-#include "memory.hpp"
+#include "mappers/mapper_factory.hpp"
+#include "mappers/ppu_map.hpp"
 #include "ppu.hpp"
+#include "system.hpp"
 
 #include "time.h"
 
@@ -22,9 +23,11 @@ using cpu::M6502;
 using ctrl::Button;
 using ctrl::JoyPad;
 using dbg::Debugger;
-using mapper::NROM;
+
+using mapper::MapperFactory;
 using mapper::PPUMap;
 using std::string;
+using sys::NES;
 using vid::PPU;
 using vid::Registers;
 
@@ -70,29 +73,7 @@ int main(int argc, char **argv) {
       SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24,
                         SDL_TEXTUREACCESS_STREAMING, vid::WIDTH, vid::HEIGHT);
 
-  string f(argv[1]);
-  std::ifstream infile(f, std::ios::in | std::ios::binary);
-  if (!infile) {
-    std::cerr << "BAD FILE" << std::endl;
-    exit(1);
-  }
-  Cartridge cartridge(infile);
-  infile.close();
-  std::cerr << cartridge << std::endl;
-
-  JoyPad joypad;
-  PPUMap ppu_map(cartridge);
-  PPU ppu(ppu_map);
-  NROM cpu_map(cartridge, ppu.registers, ppu.oam, joypad);
-  M6502 cpu(cpu_map, false);
-
-  cpu.reset();
-
-  // automation mode, do the reset things, but then immediately set PC to the
-  // beginning of the tests
-  // cpu.reset(0xC000);
-
-  Debugger d(true, false);
+  NES nes(argv[1]);
 
   SDL_Event event;
 
@@ -112,28 +93,28 @@ int main(int argc, char **argv) {
       case SDL_KEYDOWN:
         switch (event.key.keysym.sym) {
         case SDLK_a:
-          joypad.press(Button::A);
+          nes.joypad_1.press(Button::A);
           break;
         case SDLK_s:
-          joypad.press(Button::B);
+          nes.joypad_1.press(Button::B);
           break;
         case SDLK_q:
-          joypad.press(Button::Select);
+          nes.joypad_1.press(Button::Select);
           break;
         case SDLK_w:
-          joypad.press(Button::Start);
+          nes.joypad_1.press(Button::Start);
           break;
         case SDLK_UP:
-          joypad.press(Button::Up);
+          nes.joypad_1.press(Button::Up);
           break;
         case SDLK_DOWN:
-          joypad.press(Button::Down);
+          nes.joypad_1.press(Button::Down);
           break;
         case SDLK_LEFT:
-          joypad.press(Button::Left);
+          nes.joypad_1.press(Button::Left);
           break;
         case SDLK_RIGHT:
-          joypad.press(Button::Right);
+          nes.joypad_1.press(Button::Right);
           break;
         default:
           std::cout << +event.key.keysym.sym << std::endl;
@@ -143,28 +124,28 @@ int main(int argc, char **argv) {
       case SDL_KEYUP:
         switch (event.key.keysym.sym) {
         case SDLK_a:
-          joypad.release(Button::A);
+          nes.joypad_1.release(Button::A);
           break;
         case SDLK_s:
-          joypad.release(Button::B);
+          nes.joypad_1.release(Button::B);
           break;
         case SDLK_q:
-          joypad.release(Button::Select);
+          nes.joypad_1.release(Button::Select);
           break;
         case SDLK_w:
-          joypad.release(Button::Start);
+          nes.joypad_1.release(Button::Start);
           break;
         case SDLK_UP:
-          joypad.release(Button::Up);
+          nes.joypad_1.release(Button::Up);
           break;
         case SDLK_DOWN:
-          joypad.release(Button::Down);
+          nes.joypad_1.release(Button::Down);
           break;
         case SDLK_LEFT:
-          joypad.release(Button::Left);
+          nes.joypad_1.release(Button::Left);
           break;
         case SDLK_RIGHT:
-          joypad.release(Button::Right);
+          nes.joypad_1.release(Button::Right);
           break;
         default:
           std::cout << +event.key.keysym.sym << std::endl;
@@ -175,15 +156,11 @@ int main(int argc, char **argv) {
     }
 
     try {
-      // auto c = cpu.debugStep(d);
-      auto c = cpu.step();
-
-      // (void)c;
-      ppu.step(c * 3, cpu.nmiPin());
+      nes.step();
     } catch (std::exception &e) {
       std::cerr << e.what() << std::endl;
-      std::cerr << "Cycles: " << cpu.state().cycle << std::endl;
-      std::cerr << std::hex << "PC: 0x" << +cpu.state().pc << std::endl;
+      std::cerr << "Cycles: " << nes.state().cycle << std::endl;
+      std::cerr << std::hex << "PC: 0x" << +nes.state().pc << std::endl;
       quit = true;
       SDL_Delay(SCREEN_DELAY);
     }
@@ -192,11 +169,7 @@ int main(int argc, char **argv) {
     // cpu cycles we're still technically instruction stepped, so this might get
     // a little weird and rendering may suffer
 
-    if (cpu.nmiPin() && ppu.registers.showBackground()) {
-      // std::cout << "UPDATE SCREEN" << std::endl;
-      ppu.renderBackground();
-      ppu.renderSprites();
-      std::copy(ppu.frameBuffer().begin(), ppu.frameBuffer().end(), fb.begin());
+    if (nes.render(fb)) {
       SDL_UpdateTexture(texture, nullptr, fb.data(), vid::WIDTH * 3);
       SDL_RenderClear(renderer);
       SDL_RenderCopy(renderer, texture, nullptr, nullptr);
@@ -211,7 +184,7 @@ int main(int argc, char **argv) {
   SDL_DestroyTexture(texture);
   SDL_DestroyWindow(window);
   SDL_Quit();
-  std::cout << +cpu.state().cycle << std::endl;
+  std::cout << +nes.state().cycle << std::endl;
   std::cout << "Frames: " << frames << std::endl;
 
   return 0;
