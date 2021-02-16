@@ -30,6 +30,7 @@ public:
   FrameBuffer const &frameBuffer() { return framebuf_; }
 
   void step(uint16_t cycles, bool &nmi);
+  // void reset();
   bool render();
   bool renderSprites();
   bool renderBackground();

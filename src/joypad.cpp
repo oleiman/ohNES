@@ -11,9 +11,9 @@ uint8_t JoyPad::readNext() {
   }
 }
 
-void JoyPad::press(Button b) { state_[static_cast<uint8_t>(b)] = 0x01; }
+void JoyPad::press(Button const b) { state_[static_cast<uint8_t>(b)] = 0x01; }
 
-void JoyPad::release(Button b) { state_[static_cast<uint8_t>(b)] = 0x00; }
+void JoyPad::release(Button const b) { state_[static_cast<uint8_t>(b)] = 0x00; }
 
 void JoyPad::toggleStrobe() {
   strobe_ = !strobe_;

@@ -82,6 +82,7 @@ void Cartridge::parseHeader(array<uint8_t, 16> hdr) {
   for (int i = 0; i < 3; ++i) {
     cerr << hdr[i];
   }
+  cerr << endl;
   assert(hdr[3] == 0x1A);
 
   prgRomSize = hdr[4] * (1 << 14);

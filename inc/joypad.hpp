@@ -19,8 +19,8 @@ enum class Button {
 
 struct JoyPad {
   uint8_t readNext();
-  void press(Button b);
-  void release(Button b);
+  void press(Button const b);
+  void release(Button const b);
   void toggleStrobe();
 
 private:
