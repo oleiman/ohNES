@@ -14,11 +14,22 @@ class PPU {
   using AddressT = uint16_t;
   using DataT = uint8_t;
   using FrameBuffer = std::array<std::array<uint8_t, 3>, WIDTH * HEIGHT>;
-  struct Viewable {
+
+  struct View {
+    struct Shift {
+      int x;
+      int y;
+    };
     uint8_t x_min;
     uint8_t y_min;
     uint8_t x_max;
     uint8_t y_max;
+    Shift shift;
+    bool viewable(int x, int y) {
+      x -= shift.x;
+      y -= shift.y;
+      return (x >= x_min && x <= x_max && y >= y_min && y <= y_max);
+    }
   };
 
 public:
@@ -32,10 +43,9 @@ public:
   void step(uint16_t cycles, bool &nmi);
   // void reset();
   bool render();
-  bool renderSprites();
-  bool renderBackground();
-  void renderNametable(uint16_t nt_base, Viewable const &view, int shift_x,
-                       int shift_y);
+  void renderBgPixel(uint16_t nt_base, View const &view, int abs_x, int abs_y);
+  void renderSpritePixel(int abs_x, int abs_y);
+  void evaluateSprites();
 
   // For debugging and ROM exploratory purposes
   void showTile(uint8_t x, uint8_t y, uint8_t bank, uint8_t tile);
@@ -58,7 +68,14 @@ private:
   mem::Mapper &mapper_;
   uint16_t cycle_ = 0;
   uint16_t scanline_ = 261; // initialize to pre-render scanline
-  std::array<uint8_t, 32> oam_2_{};
+  std::array<uint8_t, 32> secondary_oam_{};
+  bool bg_nonzero_ = false;
+  bool sprite_nonzero_ = false;
+
+  std::array<uint8_t, 8> sprite_attrs{};
+  std::array<uint8_t, 8> sprite_xpos{};
+  std::array<uint8_t, 8> sprite_tiles_l{};
+  std::array<uint8_t, 8> sprite_tiles_h{};
 
   const static std::array<std::array<uint8_t, 3>, 64> SystemPalette;
 };

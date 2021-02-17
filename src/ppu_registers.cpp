@@ -40,7 +40,9 @@ void Registers::write(CName r, uint8_t val) {
     addr_latch_ = !addr_latch_;
   } else if (r == PPUDATA) {
     write_pending_ = true;
-  }
+  } // else if (r == OAMDATA) {
+  //   std::cout << "OAMDATA" << std::endl;
+  // }
 
   // TODO(oren): confusing control flow
   bool gen_nmi = vBlankNMI();

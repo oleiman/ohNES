@@ -60,31 +60,152 @@ void PPU::visibleLine() {
     }
   }
 
-  bool odd = cycle_ & 0x01;
-
   if (cycle_ < 257) { // Data for current scanline
-    if (((cycle_ - 1) & 0x07) == 0) {
-      // TODO(oren): reload shift registers
+
+    int pixel_absolute_x = cycle_ - 1;
+    int pixel_absolute_y = scanline_;
+
+    // NOTE(oren): background rendering
+    if (registers.showBackground()) {
+
+      // TODO(oren): move this plumbing elsewhere. shouldn't need to generate on
+      // a a pixel by pixel basis.
+      auto primary_nt = registers.baseNametableAddr();
+      auto secondary_nt = 0x2000 + ((primary_nt - 0x2000 + 0x400) % 0x800);
+      if (primary_nt > 0x2400) {
+        std::cout << "holy cow" << std::endl;
+      }
+      View primary_view{registers.scrollX(),
+                        registers.scrollY(),
+                        255,
+                        239,
+                        {-registers.scrollX(), -registers.scrollY()}};
+      View secondary_view{
+          0, 0, registers.scrollX(), 239, {255 - registers.scrollX(), 0}};
+
+      if (primary_view.viewable(pixel_absolute_x, pixel_absolute_y)) {
+        renderBgPixel(primary_nt, primary_view, pixel_absolute_x,
+                      pixel_absolute_y);
+      } else if (secondary_view.viewable(pixel_absolute_x, pixel_absolute_y)) {
+        renderBgPixel(secondary_nt, secondary_view, pixel_absolute_x,
+                      pixel_absolute_y);
+      }
     }
-    if (odd) {
-      // TODO(oren): READ into internal latches
-      // 1. Nametable byte
-      // 2. Attribute table byte
-      // 3. Pattern table tile low
-      // 4. Pattern table tile high (+8 bytes from pattern table tile low)
-    } else {
-      // "finalize" the memory access from the previous cycle)
+
+    // NOTE(oren): sprite rendering
+    if (registers.showSprites()) {
+      renderSpritePixel(pixel_absolute_x, pixel_absolute_y);
     }
-    // bookkeeping
+
+    if (registers.showSprites() && oam[0] == scanline_ && oam[3] <= cycle_) {
+      registers.setSpriteZeroHit(true);
+    }
+
+  } else if (cycle_ == 340) {
+    evaluateSprites();
   } else if (cycle_ < 321) {
-    oam_2_.fill(0);
-    // TODO(oren): sprite evaluation
   } else if (cycle_ < 336) {
     // TODO(oren): load first 2 tiles for next scanline into shift registers
   } else {
     // TODO(oren): throwaway reads (cycles 337 - 340)
   }
   tick();
+}
+
+void PPU::renderBgPixel(uint16_t nt_base, View const &view, int abs_x,
+                        int abs_y) {
+  uint8_t pixel_x = abs_x - view.shift.x;
+  uint8_t pixel_y = abs_y - view.shift.y;
+  int x = pixel_x % 8;
+  int y = pixel_y % 8;
+  int tile_x = pixel_x / 8;
+  int tile_y = pixel_y / 8;
+  auto palette = bgPalette(nt_base, tile_x, tile_y);
+  int nametable_i = tile_y * 32 + tile_x;
+  auto tile = static_cast<uint16_t>(readByte(nt_base + nametable_i));
+  auto tile_base = registers.backgroundPTableAddr() + tile * 16;
+  auto lower = readByte(tile_base + y) >> (7 - x);
+  auto upper = readByte(tile_base + y + 8) >> (7 - x);
+  auto value = ((upper & 0x01) << 1) | (lower & 0x01);
+  bg_nonzero_ = (value != 0);
+  uint8_t rgb = palette[value];
+  set_pixel(abs_x, abs_y, SystemPalette[rgb]);
+}
+
+// TODO(oren): make this more efficient by using stored tile data as shift
+// registers, counters, etc
+// TODO(oren): deal with sprite/background priority
+void PPU::renderSpritePixel(int abs_x, int abs_y) {
+  sprite_nonzero_ = false;
+  for (int i = 0; i < 8 && sprite_xpos[i] > 0; ++i) {
+    uint8_t sprite_x = sprite_xpos[i];
+    uint8_t attr = sprite_attrs[i];
+    uint8_t pidx = attr & 0b11;
+    bool flip_horiz = attr & 0b01000000;
+    auto palette = spritePalette(pidx);
+    auto lower = sprite_tiles_l[i];
+    auto upper = sprite_tiles_h[i];
+    for (int x = 7; x >= 0; --x) {
+      uint16_t value = ((upper & 0x01) << 1) | (lower & 0x01);
+      upper >>= 1;
+      lower >>= 1;
+      if (value == 0) {
+        continue;
+      }
+      uint8_t rgb = palette[value];
+      int px = sprite_x + x;
+      int py = scanline_;
+
+      if (flip_horiz) {
+        px = sprite_x + (7 - x);
+      }
+
+      if (px == abs_x && py == abs_y && px < WIDTH && py < HEIGHT) {
+        sprite_nonzero_ = true;
+        set_pixel(px, py, SystemPalette[rgb]);
+      }
+    }
+  }
+}
+
+void PPU::evaluateSprites() {
+  // TODO(oren): some tricks might depend on spreading this out over the correct
+  // cycles
+  int next_scanline = scanline_ + 1;
+  secondary_oam_.fill(0xFF);
+  int n2 = 0;
+  for (int n = 0; n < oam.size() && n2 < secondary_oam_.size(); n += 4) {
+    if (next_scanline >= oam[n] && next_scanline < (oam[n] + 8)) {
+      for (int m = 0; m < 4; ++m) {
+        secondary_oam_[n2 + m] = oam[n + m];
+      }
+      n2 += 4;
+    }
+  }
+  sprite_tiles_l.fill(0);
+  sprite_tiles_h.fill(0);
+  sprite_xpos.fill(0);
+  sprite_attrs.fill(0);
+  for (int i = 0; i < secondary_oam_.size(); i += 4) {
+    if (secondary_oam_[i] == 0xFF) {
+      break;
+    }
+    uint8_t tile_idx = secondary_oam_[i + 1];
+    uint8_t sprite_x = secondary_oam_[i + 3];
+    uint8_t sprite_y = secondary_oam_[i];
+    uint8_t attr = secondary_oam_[i + 2];
+    bool flip_vert = attr & 0b10000000;
+    auto bank = registers.spritePTableAddr();
+    auto tile_base = bank + tile_idx * 16;
+    int y = next_scanline - sprite_y;
+    if (flip_vert) {
+      y = 7 - y;
+    }
+    sprite_tiles_l[i / 4] = readByte(tile_base + y);
+    sprite_tiles_h[i / 4] = readByte(tile_base + y + 8);
+    sprite_xpos[i / 4] = sprite_x;
+    sprite_attrs[i / 4] = attr;
+  }
 }
 
 void PPU::vBlankLine() {
@@ -108,112 +229,10 @@ void PPU::vBlankLine() {
 }
 
 bool PPU::render() {
-  auto bg = renderBackground();
-  auto spr = renderSprites();
+  auto bg = registers.showBackground(); // renderBackground();
+  auto spr = registers.showSprites();   // renderSprites();
+  // auto spr = renderSprites();
   return bg || spr;
-}
-
-bool PPU::renderBackground() {
-  if (registers.showBackground()) {
-    auto primary_nt = registers.baseNametableAddr();
-    auto secondary_nt = 0x2000 + ((primary_nt - 0x2000 + 0x400) % 0x800);
-    if (primary_nt > 0x2400) {
-      std::cout << "holy cow" << std::endl;
-    }
-
-    // TODO(oren): not quite right for vertical scroll
-    renderNametable(primary_nt,
-                    {registers.scrollX(), registers.scrollY(), 255, 239},
-                    -registers.scrollX(), -registers.scrollY());
-    renderNametable(secondary_nt, {0, 0, registers.scrollX(), 239},
-                    255 - registers.scrollX(), 0);
-    return true;
-  } else {
-    return false;
-  }
-}
-
-void PPU::renderNametable(uint16_t nt_base, Viewable const &view, int shift_x,
-                          int shift_y) {
-  auto bank = registers.backgroundPTableAddr();
-
-  for (int i = 0; i < 0x03c0; ++i) {
-    auto tile = static_cast<uint16_t>(readByte(nt_base + i));
-    auto tile_x = i % 32;
-    auto tile_y = i / 32;
-    auto palette = bgPalette(nt_base, tile_x, tile_y);
-    auto tile_base = bank + tile * 16;
-    for (int y = 0; y < 8; ++y) {
-      auto lower = readByte(tile_base + y);
-      auto upper = readByte(tile_base + y + 8);
-      for (int x = 7; x >= 0; x--) {
-        auto value = ((upper & 1) << 1) | (lower & 1);
-        upper >>= 1;
-        lower >>= 1;
-        uint8_t rgb = palette[value];
-        uint8_t pixel_x = tile_x * 8 + x;
-        uint8_t pixel_y = tile_y * 8 + y;
-
-        if (pixel_x >= view.x_min && pixel_x <= view.x_max &&
-            pixel_y >= view.y_min && pixel_y <= view.y_max) {
-          assert((pixel_x + shift_x) < 256);
-          assert((pixel_y + shift_y) < 240);
-          set_pixel(pixel_x + shift_x, pixel_y + shift_y, SystemPalette[rgb]);
-        }
-      }
-    }
-  }
-}
-
-bool PPU::renderSprites() {
-  if (registers.showSprites()) {
-    for (int i = 0; i < oam.size(); i += 4) {
-      // uint8_t sprite_idx = i >> 2;
-      uint8_t tile_idx = oam[i + 1];
-      uint8_t sprite_x = oam[i + 3];
-      uint8_t sprite_y = oam[i];
-      uint8_t attr = oam[i + 2];
-      uint8_t pidx = attr & 0b11;
-      bool flip_horiz = attr & 0b01000000;
-      bool flip_vert = attr & 0b10000000;
-
-      auto palette = spritePalette(pidx);
-      auto bank = registers.spritePTableAddr();
-      auto tile_base = bank + tile_idx * 16;
-
-      for (int y = 0; y < 8; ++y) {
-        auto lower = readByte(tile_base + y);
-        auto upper = readByte(tile_base + y + 8);
-        for (int x = 7; x >= 0; x--) {
-          auto value = ((upper & 1) << 1) | (lower & 1);
-          upper >>= 1;
-          lower >>= 1;
-          if (value == 0) {
-            continue;
-          }
-          uint8_t rgb = palette[value];
-          int px = sprite_x + x;
-          int py = sprite_y + y;
-
-          if (!flip_horiz && !flip_vert) {
-            (void)px;
-            (void)py;
-          } else if (flip_horiz && flip_vert) {
-            px = sprite_x + (7 - x);
-            py = sprite_y + (7 - y);
-          } else if (flip_horiz) {
-            px = sprite_x + (7 - x);
-          } else if (flip_vert) {
-            py = sprite_y + (7 - y);
-          }
-          set_pixel(px, py, SystemPalette[rgb]);
-        }
-      }
-    }
-    return true;
-  } else {
-    return false;
-  }
 }
 
 std::array<uint8_t, 4> PPU::bgPalette(uint16_t base, uint16_t tile_x,
@@ -248,9 +267,6 @@ void PPU::set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb) {
 void PPU::tick() {
   ++cycle_;
   if (cycle_ == 341) {
-    if (registers.showSprites() && oam[0] == scanline_ && oam[3] <= cycle_) {
-      registers.setSpriteZeroHit(true);
-    }
     ++scanline_;
     cycle_ = 0;
   }
