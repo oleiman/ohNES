@@ -12,7 +12,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 add_subdirectory(external/6502-emu)
 
 project(ohNES)
-add_executable(ohNES src/nes.cpp src/system.cpp src/mappers/base_mapper.cpp src/mappers/cnrom.cpp src/mappers/ppu_map.cpp src/mappers/nrom.cpp src/mappers/uxrom.cpp src/mappers/mapper_factory.cpp src/ppu_registers.cpp src/cartridge.cpp src/ppu.cpp src/joypad.cpp)
+add_executable(ohNES src/nes.cpp src/system.cpp src/mappers/base_mapper.cpp src/mappers/cnrom.cpp src/mappers/ppu_map.cpp src/mappers/nrom.cpp src/mappers/uxrom.cpp src/mappers/mapper_factory.cpp src/ppu_registers.cpp src/cartridge.cpp src/ppu.cpp src/joypad.cpp src/util.cpp)
 
 find_package(SDL2 REQUIRED)
 target_include_directories(ohNES PRIVATE inc ${SDL2_INCLUDE_DIRS})

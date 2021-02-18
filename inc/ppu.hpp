@@ -25,11 +25,17 @@ class PPU {
     uint8_t x_max;
     uint8_t y_max;
     Shift shift;
-    bool viewable(int x, int y) {
+    bool contains(int x, int y) {
       x -= shift.x;
       y -= shift.y;
       return (x >= x_min && x <= x_max && y >= y_min && y <= y_max);
     }
+  };
+
+  struct Nametable {
+    AddressT base;
+    View view;
+    bool describesPixel(int x, int y) { return view.contains(x, y); }
   };
 
 public:
@@ -43,6 +49,7 @@ public:
   void step(uint16_t cycles, bool &nmi);
   // void reset();
   bool render();
+  Nametable selectNametable(int x, int y);
   void renderBgPixel(uint16_t nt_base, View const &view, int abs_x, int abs_y);
   void renderSpritePixel(int abs_x, int abs_y);
   void evaluateSprites();
