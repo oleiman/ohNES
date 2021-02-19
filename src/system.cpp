@@ -14,6 +14,7 @@ NES::NES(std::string_view const &romfile, bool debug)
       cpu_map_(MapperFactory(cartridge_, ppu_.registers, ppu_.oam, joypad_1)),
       cpu_(*cpu_map_, false), debugger_(true, false) {
   cpu_.reset();
+  std::cerr << cartridge_ << std::endl;
 }
 
 void NES::step() {
@@ -29,6 +30,5 @@ bool NES::render(RenderBuffer &renderBuf) {
   } else {
     return false;
   }
-} // namespace sys
-
+}
 } // namespace sys

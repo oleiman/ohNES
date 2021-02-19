@@ -10,13 +10,10 @@ using std::to_string;
 namespace vid {
 
 void PPU::step(uint16_t cycles, bool &nmi) {
-
   if (registers.handleNmi()) {
     nmi = true;
   }
-
   cycles += registers.oamCycles();
-
   while (cycles-- > 0) {
     if (cycle_ == 1 && scanline_ == 241) {
       if (registers.vBlankNMI()) {
@@ -39,40 +36,37 @@ void PPU::step(uint16_t cycles, bool &nmi) {
     } else if (scanline_ < 261) { // VBlank lines
       vBlankLine();
     } else if (scanline_ == 261) {
-      // TODO(oren): pre-render scanline
-      if (cycle_ == 1) {
-      }
+      // TODO(oren): pre-render scanline?
+      // if (cycle_ == 1) {
+      // }
       tick();
     }
   }
 }
 
 void PPU::visibleLine() {
-  if (cycle_ == 0) {
-    tick();
-    return;
+
+  // NOTE(oren): this would indicate either:
+  //    a) a timing bug in the emulation (PPU or CPU) or
+  //    b) a software bug in the game
+  if (registers.writePending()) {
+    throw std::runtime_error("CPU writing during non-VBLANK line");
+  } else if (registers.readPending()) {
+    throw std::runtime_error("CPU reading during non-VBLANK line");
   }
 
-  if (registers.writePending() || registers.readPending()) {
-    if (registers.writePending()) {
-      throw std::runtime_error("CPU writing during non-VBLANK line");
-    } else {
-      throw std::runtime_error("CPU reading during non-VBLANK line");
-    }
-  }
-
-  if (cycle_ < 257) { // Data for current scanline
-
+  // if (cycle_ == 0) {
+  //   // do nothing
+  // } else
+  if (cycle_ >= 1 && cycle_ < 257) { // Data for current scanline
     int pixel_absolute_x = cycle_ - 1;
     int pixel_absolute_y = scanline_;
 
-    // NOTE(oren): background rendering
     if (registers.showBackground()) {
       auto nt = selectNametable(pixel_absolute_x, pixel_absolute_y);
       renderBgPixel(nt.base, nt.view, pixel_absolute_x, pixel_absolute_y);
     }
 
-    // NOTE(oren): sprite rendering
     if (registers.showSprites()) {
       renderSpritePixel(pixel_absolute_x, pixel_absolute_y);
     }
@@ -86,37 +80,54 @@ void PPU::visibleLine() {
     }
 
   } else if (cycle_ == 340) {
+    // NOTE(oren): Pack sprite evaluation logic into last cycle on the scanline
+    // for simplicity. Regain 5 sanity points and cure "Terror" effect.
     evaluateSprites();
-  } else if (cycle_ < 321) {
-  } else if (cycle_ < 336) {
-    // TODO(oren): load first 2 tiles for next scanline into shift registers
-  } else {
-    // TODO(oren): throwaway reads (cycles 337 - 340)
   }
+  // NOTE(oren): the last few branches are junk that
+  // else if (cycle_ < 321) {
+  //                            // I'll probably never use
+  // } else if (cycle_ < 336) {
+  //   // TODO(oren): load first 2 tiles for next scanline into shift registers
+  // } else {
+  //   // TODO(oren): throwaway reads (cycles 337 - 340)
+  // }
   tick();
 }
 
+// NOTE(oren): this only allows for scrolling in one direction at a time. that
+// is, if we're not scrolling in the x direction, we're scrolling in the y
+// direction. additionally, there's no distinction made between coarse and fine
+// scroll bits. instead, we just treat the X and Y scroll bytes geometrically,
+// describing the portion of the visible screen that should map to each
+// nametable.
 PPU::Nametable PPU::selectNametable(int x, int y) {
 
-  if (registers.baseNametableAddr() > 0x2400) {
-    throw std::runtime_error(
-        "Nametable base > 0x2400 not yet implemented (addr: " +
-        std::to_string(registers.baseNametableAddr()) + ")");
-  }
+  // TODO(oren): gross
+  Nametable primary;
+  Nametable secondary;
 
   // TODO(oren): these shouldn't change outside of VBLANK, so we shouldn't
   // have to construct them every cycle...
-  Nametable primary{registers.baseNametableAddr(),
-                    {registers.scrollX(),
-                     registers.scrollY(),
-                     255,
-                     239,
-                     {-registers.scrollX(), -registers.scrollY()}}
+  // on the other hand, why carry around the extra state?
 
-  };
-  Nametable secondary{
-      static_cast<AddressT>(0x2000 + ((primary.base - 0x2000 + 0x400) % 0x800)),
-      {0, 0, registers.scrollX(), 239, {255 - registers.scrollX(), 0}}};
+  if (!registers.scrollY()) {
+    primary = {registers.baseNametableAddr(),
+               {registers.scrollX(), 0, 255, 239, {-registers.scrollX(), 0}}
+
+    };
+    secondary = {
+        static_cast<AddressT>(0x2000 +
+                              ((primary.base - 0x2000 + 0x400) % 0x800)),
+        {0, 0, registers.scrollX(), 239, {255 - registers.scrollX(), 0}}};
+  } else {
+    primary = {registers.baseNametableAddr(),
+               {0, registers.scrollY(), 255, 239, {0, -registers.scrollY()}}};
+    secondary = {
+        static_cast<AddressT>(0x2000 +
+                              ((primary.base - 0x2000 + 0x400) % 0x800)),
+        {0, 0, 255, registers.scrollY(), {0, 239 - registers.scrollY()}}};
+  }
 
   if (primary.describesPixel(x, y)) {
     return primary;
@@ -124,8 +135,9 @@ PPU::Nametable PPU::selectNametable(int x, int y) {
     return secondary;
   } else {
     std::stringstream ss;
-    ss << "Pixel (" << +x << ", " << +y
-       << ") not described by either nametable";
+    ss << "Pixel (" << +x << ", " << +y << ") out of range?" << std::endl;
+    ss << "Primary " << primary << std::endl;
+    ss << "Secondary " << secondary;
     throw std::runtime_error(ss.str());
   }
 }
@@ -146,36 +158,27 @@ void PPU::renderBgPixel(uint16_t nt_base, View const &view, int abs_x,
   auto upper = readByte(tile_base + y + 8) >> (7 - x);
   auto value = ((upper & 0x01) << 1) | (lower & 0x01);
   bg_nonzero_ = (value != 0);
-  uint8_t rgb = palette[value];
-  set_pixel(abs_x, abs_y, SystemPalette[rgb]);
+  set_pixel(abs_x, abs_y, SystemPalette[palette[value]]);
 }
 
-// TODO(oren): make this more efficient by using stored tile data as shift
-// registers, counters, etc
 // TODO(oren): deal with sprite/background priority
 void PPU::renderSpritePixel(int abs_x, int abs_y) {
   sprite_nonzero_ = false;
   for (int i = 0; i < 8 && sprite_xpos[i] > 0; ++i) {
-    uint8_t sprite_x = sprite_xpos[i];
     uint8_t attr = sprite_attrs[i];
     uint8_t pidx = attr & 0b11;
     auto palette = spritePalette(pidx);
-    auto lower = sprite_tiles_l[i];
-    auto upper = sprite_tiles_h[i];
-    for (int x = 7; x >= 0; --x) {
+    auto &sprite_x = sprite_xpos[i];
+    auto &lower = sprite_tiles_l[i];
+    auto &upper = sprite_tiles_h[i];
+    if (abs_x == sprite_x && (lower > 0 || upper > 0)) {
       uint16_t value = ((upper & 0x01) << 1) | (lower & 0x01);
-      upper >>= 1;
       lower >>= 1;
-      if (value == 0) {
-        continue;
-      }
-      uint8_t rgb = palette[value];
-      int px = sprite_x + x;
-      int py = scanline_;
-
-      if (px == abs_x && py == abs_y && px < WIDTH && py < HEIGHT) {
+      upper >>= 1;
+      ++sprite_x;
+      if (value > 0) {
         sprite_nonzero_ = true;
-        set_pixel(px, py, SystemPalette[rgb]);
+        set_pixel(abs_x, abs_y, SystemPalette[palette[value]]);
       }
     }
   }
@@ -186,11 +189,11 @@ void PPU::evaluateSprites() {
   // cycles
   int next_scanline = scanline_ + 1;
   secondary_oam_.fill(0xFF);
-  int n2 = 0;
-  for (int n = 0; n < oam.size() && n2 < secondary_oam_.size(); n += 4) {
-    if (next_scanline >= oam[n] && next_scanline < (oam[n] + 8)) {
+  for (int n1 = 0, n2 = 0; n1 < oam.size() && n2 < secondary_oam_.size();
+       n1 += 4) {
+    if (next_scanline >= oam[n1] && next_scanline < (oam[n1] + 8)) {
       for (int m = 0; m < 4; ++m) {
-        secondary_oam_[n2 + m] = oam[n + m];
+        secondary_oam_[n2 + m] = oam[n1 + m];
       }
       n2 += 4;
     }
@@ -201,10 +204,8 @@ void PPU::evaluateSprites() {
   sprite_attrs.fill(0);
   // TODO(oren): secondary oam entries could/should be structs...less error
   // prone and less horrible to read.
-  for (int i = 0; i < secondary_oam_.size(); i += 4) {
-    if (secondary_oam_[i] == 0xFF) {
-      break;
-    }
+  for (int i = 0; secondary_oam_[i] != 0xFF && i < secondary_oam_.size();
+       i += 4) {
     uint8_t tile_idx = secondary_oam_[i + 1];
     uint8_t sprite_x = secondary_oam_[i + 3];
     uint8_t sprite_y = secondary_oam_[i];
@@ -219,7 +220,7 @@ void PPU::evaluateSprites() {
     }
     sprite_tiles_l[i / 4] = readByte(tile_base + y);
     sprite_tiles_h[i / 4] = readByte(tile_base + y + 8);
-    if (flip_horiz) {
+    if (!flip_horiz) {
       util::reverseByte(sprite_tiles_l[i / 4]);
       util::reverseByte(sprite_tiles_h[i / 4]);
     }
@@ -249,10 +250,7 @@ void PPU::vBlankLine() {
 }
 
 bool PPU::render() {
-  auto bg = registers.showBackground(); // renderBackground();
-  auto spr = registers.showSprites();   // renderSprites();
-  // auto spr = renderSprites();
-  return bg || spr;
+  return registers.showBackground() || registers.showSprites();
 }
 
 std::array<uint8_t, 4> PPU::bgPalette(uint16_t base, uint16_t tile_x,
@@ -360,5 +358,22 @@ const array<array<uint8_t, 3>, 64> PPU::SystemPalette = {
      {0xD7, 0xE8, 0x95}, {0xA6, 0xED, 0xAF}, {0xA2, 0xF2, 0xDA},
      {0x99, 0xFF, 0xFC}, {0xDD, 0xDD, 0xDD}, {0x11, 0x11, 0x11},
      {0x11, 0x11, 0x11}}};
+
+std::ostream &operator<<(std::ostream &os, PPU::Nametable const &in) {
+  std::stringstream ss;
+  ss << std::hex;
+  ss << "Base: 0x" << in.base << std::endl;
+  ss << std::dec;
+  ss << "View: " << std::endl;
+  ss << "\tMin: (" << +in.view.x_min << ", " << +in.view.y_min << ")"
+     << std::endl;
+  ss << "\tMax: (" << +in.view.x_max << ", " << +in.view.y_max << ")"
+     << std::endl;
+  ss << "\tShift: " << std::endl;
+  ss << "\t\tX: " << +in.view.shift.x << std::endl;
+  ss << "\t\tY: " << +in.view.shift.y << std::endl;
+  os << ss.str();
+  return os;
+}
 
 } // namespace vid

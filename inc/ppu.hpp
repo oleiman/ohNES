@@ -15,6 +15,8 @@ class PPU {
   using DataT = uint8_t;
   using FrameBuffer = std::array<std::array<uint8_t, 3>, WIDTH * HEIGHT>;
 
+  // TODO(oren): const correctness (requires some refactoring in
+  // selectNametable)
   struct View {
     struct Shift {
       int x;
@@ -25,7 +27,7 @@ class PPU {
     uint8_t x_max;
     uint8_t y_max;
     Shift shift;
-    bool contains(int x, int y) {
+    bool contains(int x, int y) const {
       x -= shift.x;
       y -= shift.y;
       return (x >= x_min && x <= x_max && y >= y_min && y <= y_max);
@@ -35,8 +37,10 @@ class PPU {
   struct Nametable {
     AddressT base;
     View view;
-    bool describesPixel(int x, int y) { return view.contains(x, y); }
+    bool describesPixel(int x, int y) const { return view.contains(x, y); }
   };
+
+  friend std::ostream &operator<<(std::ostream &os, const Nametable &in);
 
 public:
   Registers registers;
