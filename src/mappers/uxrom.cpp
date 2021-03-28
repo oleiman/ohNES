@@ -7,52 +7,34 @@ using CName = vid::Registers::CName;
 
 namespace mapper {
 
-void UxROM::write(AddressT addr, DataT data) {
-  if (addr < 0x2000) {
-    internal_[addr & 0x7FF] = data;
-  } else if (addr < 0x4000) {
-    ppu_reg_.write(CName(addr & 0x07), data);
-  } else if (addr == 0x4014) {
-    BaseNESMapper::oamDma(static_cast<AddressT>(data) << 8);
-  } else if (addr == 0x4016) {
-    // controller 1
-    joypad_.toggleStrobe();
-  } else if (addr == 0x4017) {
-    // controller 2
-  } else if (addr < 0x4020) {
-    // APU and I/O registers
-  } else if (addr < 0x8000) {
-    // rarely used?
-  } else { // if (addr < 0xC000) {
-    // write to bank switch register
-    cart_.prgBankSelect = data;
+void UxROM::cartWrite(AddressT addr, DataT data) {
+  if (addr < 0x8000) {
+    // TODO(oren): not mapped?
+  } else {
+    prgBankSelect = data;
   }
 }
 
-UxROM::DataT UxROM::read(AddressT addr) {
-  DataT result = 0x00;
-  if (addr < 0x2000) {
-    result = internal_[addr & 0x7FF];
-  } else if (addr < 0x4000) {
-    result = ppu_reg_.read(CName(addr & 0x07));
-  } else if (addr == 0x4016) {
-    result = joypad_.readNext();
-
-  } else if (addr == 0x4017) {
-    // controller 2
-
-  } else if (addr < 0x8000) {
-    // rarely used
+UxROM::DataT UxROM::cartRead(AddressT addr) {
+  if (addr < 0x8000) {
+    // TODO(oren): not mapped
+    return 0;
   } else if (addr < 0xC000) {
     // switchable PRG ROM bank
-    uint32_t bank = (cart_.prgBankSelect) * 0x4000;
+    uint32_t bank = (prgBankSelect)*0x4000;
     uint16_t offset = addr & (0x4000 - 1);
-    result = cart_.prgRom[bank + offset];
+    return cart_.prgRom[bank + offset];
   } else { // 0xC000 <= addr <= 0xFFFF
     uint32_t fixed_bank = cart_.prgRomSize - 0x4000;
     uint16_t offset = addr & (0x4000 - 1);
-    result = cart_.prgRom[fixed_bank + offset];
+    return cart_.prgRom[fixed_bank + offset];
   }
-  return result;
 }
+
+void UxROM::chrWrite(AddressT addr, DataT data) { cart_.chrRam[addr] = data; }
+UxROM::DataT UxROM::chrRead(AddressT addr) {
+  auto &chrMem = (cart_.chrRamSize ? cart_.chrRam : cart_.chrRom);
+  return chrMem[addr];
+}
+
 } // namespace mapper

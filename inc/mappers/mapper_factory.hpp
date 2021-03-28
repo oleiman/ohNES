@@ -10,8 +10,7 @@
 
 namespace mapper {
 
-std::unique_ptr<mapper::BaseNESMapper>
+std::unique_ptr<mapper::NESMapper>
 MapperFactory(cart::Cartridge const &c, vid::Registers &reg,
-              std::array<mapper::BaseNESMapper::DataT, 0x100> &oam,
-              ctrl::JoyPad &pad);
+              std::array<uint8_t, 0x100> &oam, ctrl::JoyPad &pad);
 }

@@ -9,15 +9,15 @@
 #include <array>
 
 namespace mapper {
-class NROM : public BaseNESMapper {
+class NROM : public NESMapperBase<NROM> {
 public:
   NROM(cart::Cartridge const &c, vid::Registers &reg,
        std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
-      : BaseNESMapper(c, reg, oam, pad) {}
+      : NESMapperBase<NROM>(c, reg, oam, pad) {}
 
-  // TODO(oren): don't think this is needed
-  constexpr static size_t size = 1ul << (sizeof(AddressT) * 8);
-  void write(AddressT addr, DataT data) override;
-  DataT read(AddressT addr) override;
+  void cartWrite(AddressT addr, DataT data);
+  DataT cartRead(AddressT addr);
+  void chrWrite(AddressT addr, DataT data);
+  DataT chrRead(AddressT addr);
 };
 } // namespace mapper

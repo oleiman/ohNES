@@ -13,13 +13,14 @@ add_subdirectory(external/6502-emu)
 
 project(ohNES)
 add_executable(ohNES
-  src/nes.cpp
+  src/main.cpp
   src/system.cpp
   src/ppu_registers.cpp
   src/cartridge.cpp
-  src/mappers/base_mapper.cpp
+  # src/mappers/base_mapper.cpp
   src/mappers/cnrom.cpp
-  src/mappers/ppu_map.cpp
+  # src/mappers/ppu_map.cpp
+  src/mappers/mmc1.cpp
   src/mappers/nrom.cpp
   src/mappers/uxrom.cpp
   src/mappers/mapper_factory.cpp

@@ -1,4 +1,3 @@
-#include "mappers/mapper_factory.hpp"
 #include "sdl/display.hpp"
 #include "sdl/pad_maps.hpp"
 #include "system.hpp"
@@ -11,7 +10,6 @@ using cart::Cartridge;
 using cpu::M6502;
 using ctrl::Button;
 
-using mapper::MapperFactory;
 using sdl_int::Display;
 using sdl_int::Kbd2JoyPad;
 using sys::NES;

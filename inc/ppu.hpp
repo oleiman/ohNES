@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mappers/base_mapper.hpp"
 #include "memory.hpp"
 #include "ppu_registers.hpp"
 
@@ -7,8 +8,8 @@
 #include <iostream>
 
 namespace vid {
-const int WIDTH = 256;
-const int HEIGHT = 240;
+constexpr int WIDTH = 256;
+constexpr int HEIGHT = 240;
 
 class PPU {
   using AddressT = uint16_t;
@@ -43,10 +44,9 @@ class PPU {
   friend std::ostream &operator<<(std::ostream &os, const Nametable &in);
 
 public:
-  Registers registers;
-  std::array<uint8_t, 256> oam = {};
-
-  PPU(mem::Mapper &mapper) : mapper_(mapper) {}
+  PPU(mapper::NESMapper &mapper, Registers &registers,
+      std::array<uint8_t, 256> &oam)
+      : mapper_(mapper), registers_(registers), oam_(oam) {}
 
   FrameBuffer const &frameBuffer() { return framebuf_; }
 
@@ -72,11 +72,13 @@ private:
   void tick();
 
   // TODO(oren): find a way to advance the clock from in here
-  DataT readByte(AddressT addr) { return mapper_.read(addr); }
-  void writeByte(AddressT addr, DataT data) { mapper_.write(addr, data); }
+  DataT readByte(AddressT addr) { return mapper_.ppu_read(addr); }
+  void writeByte(AddressT addr, DataT data) { mapper_.ppu_write(addr, data); }
 
   FrameBuffer framebuf_{};
-  mem::Mapper &mapper_;
+  mapper::NESMapper &mapper_;
+  Registers &registers_;
+  std::array<uint8_t, 256> &oam_;
   uint16_t cycle_ = 0;
   uint16_t scanline_ = 261; // initialize to pre-render scanline
   std::array<uint8_t, 32> secondary_oam_{};

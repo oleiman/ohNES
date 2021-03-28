@@ -9,14 +9,15 @@
 #include <array>
 
 namespace mapper {
-class UxROM : public BaseNESMapper {
+class UxROM : public NESMapperBase<UxROM> {
 public:
   explicit UxROM(cart::Cartridge const &c, vid::Registers &reg,
                  std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
-      : BaseNESMapper(c, reg, oam, pad) {}
+      : NESMapperBase<UxROM>(c, reg, oam, pad) {}
 
-  constexpr static size_t size = 1ul << (sizeof(AddressT) * 8);
-  void write(AddressT addr, DataT data) override;
-  DataT read(AddressT addr) override;
+  void cartWrite(AddressT addr, DataT data);
+  DataT cartRead(AddressT addr);
+  void chrWrite(AddressT addr, DataT data);
+  DataT chrRead(AddressT addr);
 };
 } // namespace mapper

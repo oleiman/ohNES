@@ -10,24 +10,24 @@ using std::to_string;
 namespace vid {
 
 void PPU::step(uint16_t cycles, bool &nmi) {
-  if (registers.handleNmi()) {
+  if (registers_.handleNmi()) {
     nmi = true;
   }
-  cycles += registers.oamCycles();
+  cycles += registers_.oamCycles();
   while (cycles-- > 0) {
     if (cycle_ == 1 && scanline_ == 241) {
-      if (registers.vBlankNMI()) {
+      if (registers_.vBlankNMI()) {
         nmi = true;
       }
-      registers.setVBlankStarted();
-      registers.setSpriteZeroHit(false);
+      registers_.setVBlankStarted();
+      registers_.setSpriteZeroHit(false);
     } else if (scanline_ >= 262) {
-      registers.clearVBlankStarted();
-      registers.setSpriteZeroHit(false);
+      registers_.clearVBlankStarted();
+      registers_.setSpriteZeroHit(false);
       scanline_ = 0;
     }
 
-    if (!(registers.showBackground() || registers.showSprites())) {
+    if (!(registers_.showBackground() || registers_.showSprites())) {
       vBlankLine();
     } else if (scanline_ < 240) {
       visibleLine();
@@ -49,9 +49,9 @@ void PPU::visibleLine() {
   // NOTE(oren): this would indicate either:
   //    a) a timing bug in the emulation (PPU or CPU) or
   //    b) a software bug in the game
-  if (registers.writePending()) {
+  if (registers_.writePending()) {
     throw std::runtime_error("CPU writing during non-VBLANK line");
-  } else if (registers.readPending()) {
+  } else if (registers_.readPending()) {
     throw std::runtime_error("CPU reading during non-VBLANK line");
   }
 
@@ -62,21 +62,21 @@ void PPU::visibleLine() {
     int pixel_absolute_x = cycle_ - 1;
     int pixel_absolute_y = scanline_;
 
-    if (registers.showBackground()) {
+    if (registers_.showBackground()) {
       auto nt = selectNametable(pixel_absolute_x, pixel_absolute_y);
       renderBgPixel(nt.base, nt.view, pixel_absolute_x, pixel_absolute_y);
     }
 
-    if (registers.showSprites()) {
+    if (registers_.showSprites()) {
       renderSpritePixel(pixel_absolute_x, pixel_absolute_y);
     }
 
     // TODO(oren): shift registers will make it easier to account for hitting
     // the visible portion of Sprite Zero
     // HACK(oren):  "scanline - 8"
-    if (registers.showSprites() && oam[0] == scanline_ - 8 &&
-        oam[3] <= cycle_) {
-      registers.setSpriteZeroHit(true);
+    if (registers_.showSprites() && oam_[0] == scanline_ - 8 &&
+        oam_[3] <= cycle_) {
+      registers_.setSpriteZeroHit(true);
     }
 
   } else if (cycle_ == 340) {
@@ -111,22 +111,22 @@ PPU::Nametable PPU::selectNametable(int x, int y) {
   // have to construct them every cycle...
   // on the other hand, why carry around the extra state?
 
-  if (!registers.scrollY()) {
-    primary = {registers.baseNametableAddr(),
-               {registers.scrollX(), 0, 255, 239, {-registers.scrollX(), 0}}
+  if (!registers_.scrollY()) {
+    primary = {registers_.baseNametableAddr(),
+               {registers_.scrollX(), 0, 255, 239, {-registers_.scrollX(), 0}}
 
     };
     secondary = {
         static_cast<AddressT>(0x2000 +
                               ((primary.base - 0x2000 + 0x400) % 0x800)),
-        {0, 0, registers.scrollX(), 239, {255 - registers.scrollX(), 0}}};
+        {0, 0, registers_.scrollX(), 239, {255 - registers_.scrollX(), 0}}};
   } else {
-    primary = {registers.baseNametableAddr(),
-               {0, registers.scrollY(), 255, 239, {0, -registers.scrollY()}}};
+    primary = {registers_.baseNametableAddr(),
+               {0, registers_.scrollY(), 255, 239, {0, -registers_.scrollY()}}};
     secondary = {
         static_cast<AddressT>(0x2000 +
                               ((primary.base - 0x2000 + 0x400) % 0x800)),
-        {0, 0, 255, registers.scrollY(), {0, 239 - registers.scrollY()}}};
+        {0, 0, 255, registers_.scrollY(), {0, 239 - registers_.scrollY()}}};
   }
 
   if (primary.describesPixel(x, y)) {
@@ -153,7 +153,7 @@ void PPU::renderBgPixel(uint16_t nt_base, View const &view, int abs_x,
   auto palette = bgPalette(nt_base, tile_x, tile_y);
   int nametable_i = tile_y * 32 + tile_x;
   auto tile = static_cast<uint16_t>(readByte(nt_base + nametable_i));
-  auto tile_base = registers.backgroundPTableAddr() + tile * 16;
+  auto tile_base = registers_.backgroundPTableAddr() + tile * 16;
   auto lower = readByte(tile_base + y) >> (7 - x);
   auto upper = readByte(tile_base + y + 8) >> (7 - x);
   auto value = ((upper & 0x01) << 1) | (lower & 0x01);
@@ -189,11 +189,11 @@ void PPU::evaluateSprites() {
   // cycles
   int next_scanline = scanline_ + 1;
   secondary_oam_.fill(0xFF);
-  for (int n1 = 0, n2 = 0; n1 < oam.size() && n2 < secondary_oam_.size();
+  for (int n1 = 0, n2 = 0; n1 < oam_.size() && n2 < secondary_oam_.size();
        n1 += 4) {
-    if (next_scanline >= oam[n1] && next_scanline < (oam[n1] + 8)) {
+    if (next_scanline >= oam_[n1] && next_scanline < (oam_[n1] + 8)) {
       for (int m = 0; m < 4; ++m) {
-        secondary_oam_[n2 + m] = oam[n1 + m];
+        secondary_oam_[n2 + m] = oam_[n1 + m];
       }
       n2 += 4;
     }
@@ -212,7 +212,7 @@ void PPU::evaluateSprites() {
     uint8_t attr = secondary_oam_[i + 2];
     bool flip_vert = attr & 0b10000000;
     bool flip_horiz = attr & 0b01000000;
-    auto bank = registers.spritePTableAddr();
+    auto bank = registers_.spritePTableAddr();
     auto tile_base = bank + tile_idx * 16;
     int y = next_scanline - sprite_y;
     if (flip_vert) {
@@ -236,13 +236,13 @@ void PPU::vBlankLine() {
   // again only on odd cycles to account for 2-cycle cost. may need to look into
   // this a bit more
   if (odd) {
-    if (registers.readPending()) {
+    if (registers_.readPending()) {
       // std::cout << "service read" << std::endl;
-      auto addr = registers.vRamAddr();
-      registers.putData(readByte(addr));
-    } else if (registers.writePending()) {
-      auto addr = registers.vRamAddr();
-      auto data = registers.getData();
+      auto addr = registers_.vRamAddr();
+      registers_.putData(readByte(addr));
+    } else if (registers_.writePending()) {
+      auto addr = registers_.vRamAddr();
+      auto data = registers_.getData();
       writeByte(addr, data);
     }
   }
@@ -250,7 +250,7 @@ void PPU::vBlankLine() {
 }
 
 bool PPU::render() {
-  return registers.showBackground() || registers.showSprites();
+  return registers_.showBackground() || registers_.showSprites();
 }
 
 std::array<uint8_t, 4> PPU::bgPalette(uint16_t base, uint16_t tile_x,

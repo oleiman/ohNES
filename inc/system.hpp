@@ -4,7 +4,6 @@
 #include "cpu.hpp"
 #include "debugger.hpp"
 #include "mappers/mapper_factory.hpp"
-#include "mappers/ppu_map.hpp"
 #include "ppu.hpp"
 
 #include <string>
@@ -27,9 +26,10 @@ public:
 private:
   bool debug_;
   cart::Cartridge cartridge_;
-  mapper::PPUMap ppu_map_;
+  vid::Registers ppu_registers_;
+  std::array<uint8_t, 256> ppu_oam_ = {};
+  std::unique_ptr<mapper::NESMapper> cpu_map_;
   vid::PPU ppu_;
-  std::unique_ptr<mapper::BaseNESMapper> cpu_map_;
   cpu::M6502 cpu_;
   dbg::Debugger debugger_;
 };

@@ -20,8 +20,6 @@ struct Cartridge {
   bool vsSystem = false;
   bool pc10 = false;
   bool nes2 = false;
-  mutable uint8_t prgBankSelect = 0;
-  mutable uint8_t chrBankSelect = 0;
 
   // NOTE(oren): almost completely unused, apparently
   uint8_t tvSystem = 0;

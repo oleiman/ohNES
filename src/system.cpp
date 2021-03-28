@@ -10,9 +10,10 @@ using mapper::MapperFactory;
 
 namespace sys {
 NES::NES(std::string_view const &romfile, bool debug)
-    : debug_(debug), cartridge_(romfile), ppu_map_(cartridge_), ppu_(ppu_map_),
-      cpu_map_(MapperFactory(cartridge_, ppu_.registers, ppu_.oam, joypad_1)),
-      cpu_(*cpu_map_, false), debugger_(true, false) {
+    : debug_(debug), cartridge_(romfile),
+      cpu_map_(MapperFactory(cartridge_, ppu_registers_, ppu_oam_, joypad_1)),
+      ppu_(*cpu_map_, ppu_registers_, ppu_oam_), cpu_(*cpu_map_, false),
+      debugger_(true, false) {
   cpu_.reset();
   std::cerr << cartridge_ << std::endl;
 }
