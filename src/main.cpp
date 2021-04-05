@@ -2,25 +2,42 @@
 #include "sdl/pad_maps.hpp"
 #include "system.hpp"
 
-#include "time.h"
 #include <SDL.h>
+#include <nfd.h>
+
+#include "time.h"
 #include <iostream>
+#include <string>
 
 using cart::Cartridge;
 using cpu::M6502;
 using ctrl::Button;
 
-using sdl_int::Display;
-using sdl_int::Kbd2JoyPad;
+using sdl_internal::Display;
+using sdl_internal::Kbd2JoyPad;
 using sys::NES;
 
 #define SCALE 4
 #define SCREEN_DELAY 2000
 
 int main(int argc, char **argv) {
-  if (argc != 2) {
-    std::cerr << "USAGE: ohNES /path/to/rom/file" << std::endl;
-    exit(1);
+  std::string file;
+  if (argc == 2) {
+    file = argv[1];
+  } else {
+    nfdchar_t *outPath = nullptr;
+    nfdresult_t result = NFD_OpenDialog(nullptr, nullptr, &outPath);
+    if (result == NFD_OKAY) {
+      std::cerr << "Rom Path: " << outPath << std::endl;
+      file = outPath;
+      free(outPath);
+    } else if (result == NFD_CANCEL) {
+      std::cerr << "Fun Police" << std::endl;
+      exit(0);
+    } else {
+      std::cerr << "File select error: " << NFD_GetError() << std::endl;
+      exit(1);
+    }
   }
 
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -31,7 +48,7 @@ int main(int argc, char **argv) {
   }
   {
     Display<vid::WIDTH, vid::HEIGHT, SCALE> display;
-    NES nes(argv[1]);
+    NES nes(file);
 
     SDL_Event event;
     bool quit = false;

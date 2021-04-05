@@ -1,3 +1,6 @@
 [submodule "6502-emu"]
 	path = external/6502-emu
 	url = https://github.com/oleiman/6502-emu.git
+[submodule "external/nativefiledialog"]
+	path = external/nativefiledialog
+	url = https://github.com/mlabbe/nativefiledialog.git

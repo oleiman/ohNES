@@ -4,7 +4,7 @@
 
 #include <array>
 
-namespace sdl_int {
+namespace sdl_internal {
 
 template <int W, int H, int S> class Display {
 public:
@@ -53,4 +53,4 @@ private:
   SDL_Texture *texture;
   unsigned long long frames_;
 };
-} // namespace sdl_int
+} // namespace sdl_internal

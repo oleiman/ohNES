@@ -30,11 +30,23 @@ add_executable(ohNES
 )
 
 find_package(SDL2 REQUIRED)
-target_include_directories(ohNES PRIVATE inc ${SDL2_INCLUDE_DIRS})
+# if (LINUX AND NOT APPLE)
+#   find_package(PkgConfig REQUIRED)
+#   pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+#   target_link_directories(ohNES ${GTK3_LIBRARY_DIRS})
+#   target_include_directories(ohNES PRIVATE ${GTK3_LIBRARY_DIRS})
+#   add_definitions(${GTK3_CFLAGS_OTHER})
+# endif()
+
+target_include_directories(ohNES PRIVATE inc ${SDL2_INCLUDE_DIRS} external/nativefiledialog/src/include)
+target_link_directories(ohNES PRIVATE external/nativefiledialog/build/lib/Release/x64)
 set_property(TARGET ohNES PROPERTY CXX_STANDARD 17)
 
+target_link_libraries(ohNES 6502-emu ${SDL2_LIBRARIES} profiler nfd)
+# if (LINUX AND NOT APPLE)
+#   target_link_libraries(ohNES ${GTK3_LIBRARIES})
+# endif()
 
-target_link_libraries(ohNES 6502-emu ${SDL2_LIBRARIES} profiler)
 
 if (WITH_TESTS)
   add_subdirectory(test)
