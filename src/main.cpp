@@ -22,7 +22,7 @@ using sys::NES;
 
 int main(int argc, char **argv) {
   std::string file;
-  if (argc == 2) {
+  if (argc >= 2) {
     file = argv[1];
   } else {
     nfdchar_t *outPath = nullptr;
