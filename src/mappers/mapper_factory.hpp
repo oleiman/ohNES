@@ -8,9 +8,13 @@
 #include <array>
 #include <memory>
 
+namespace sys {
+class NES;
+}
+
 namespace mapper {
 
 std::unique_ptr<mapper::NESMapper>
-MapperFactory(cart::Cartridge const &c, vid::Registers &reg,
+MapperFactory(sys::NES &console, cart::Cartridge const &c, vid::Registers &reg,
               std::array<uint8_t, 0x100> &oam, ctrl::JoyPad &pad);
 }

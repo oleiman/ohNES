@@ -8,16 +8,22 @@
 
 #include <array>
 
+namespace sys {
+class NES;
+}
+
 namespace mapper {
-class NROM : public NESMapperBase<NROM> {
+
+class ColorDreams : public NESMapperBase<ColorDreams> {
 public:
-  NROM(cart::Cartridge const &c, vid::Registers &reg,
-       std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
-      : NESMapperBase<NROM>(c, reg, oam, pad) {}
+  ColorDreams(sys::NES &console, cart::Cartridge const &c, vid::Registers &reg,
+              std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
+      : NESMapperBase<ColorDreams>(console, c, reg, oam, pad) {}
 
   void cartWrite(AddressT addr, DataT data);
   DataT cartRead(AddressT addr);
   void chrWrite(AddressT addr, DataT data);
   DataT chrRead(AddressT addr);
 };
+
 } // namespace mapper

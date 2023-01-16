@@ -8,6 +8,10 @@
 
 #include <array>
 
+namespace sys {
+class NES;
+}
+
 namespace mapper {
 class MMC1 : public NESMapperBase<MMC1> {
   enum PrgRomBankMode { SWITCH32 = 0, FIXFIRST, FIXLAST };
@@ -18,9 +22,10 @@ class MMC1 : public NESMapperBase<MMC1> {
   const static std::array<ChrRomBankMode, 2> ChrMap;
 
 public:
-  explicit MMC1(cart::Cartridge const &c, vid::Registers &reg,
-                std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
-      : NESMapperBase<MMC1>(c, reg, oam, pad) {}
+  explicit MMC1(sys::NES &console, cart::Cartridge const &c,
+                vid::Registers &reg, std::array<DataT, 0x100> &oam,
+                ctrl::JoyPad &pad)
+      : NESMapperBase<MMC1>(console, c, reg, oam, pad) {}
 
   void cartWrite(AddressT addr, DataT data);
   DataT cartRead(AddressT addr);

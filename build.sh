@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 
 # build native file dialog
-pushd external/nativefiledialog/build/gmake_linux_zenity
-make clean
-# make CFLAGS=`pkg-config --cflags gtk+-3.0` LDFLAGS=`pkg-config --libs gtk+-3.0`
-make
-popd
+
+if [[ $OSTYPE == 'darwin'* ]];
+then
+    pushd external/nativefiledialog/build/gmake_macosx
+    make clean
+    # make CFLAGS=`pkg-config --cflags gtk+-3.0` LDFLAGS=`pkg-config --libs gtk+-3.0`
+    make
+    popd
+else
+    pushd external/nativefiledialog/build/gmake_linux_zenity
+    make clean
+    # make CFLAGS=`pkg-config --cflags gtk+-3.0` LDFLAGS=`pkg-config --libs gtk+-3.0`
+    make
+    popd
+fi
 
 rm -rf build
 mkdir build

@@ -7,9 +7,12 @@ using std::to_string;
 
 namespace vid {
 void Registers::write(CName r, uint8_t val) {
+  // store lower 5 bits of data  in the status register
+  regs_[PPUSTATUS] &= (0b11100000 | (val & 0b00011111));
+  // also store the write value to the i/o latch
+  io_latch_ = val;
+
   if (!Writeable[r]) {
-    // throw std::runtime_error("Attempt to write read-only PPU Register " +
-    //                          to_string(r));
     std::cerr << "WARNING: Attempt to write to read-only PPU Register " +
                      to_string(r)
               << std::endl;
@@ -17,32 +20,39 @@ void Registers::write(CName r, uint8_t val) {
   }
 
   write_pending_ = false;
-  // store lower 5 bits of data  in the status register
-  regs_[PPUSTATUS] &= (0b11100000 | (val & 0b00011111));
 
   if (r == PPUSCROLL) {
     if (!addr_latch_) {
-      scroll_addr_ = 0x0000;
-      scroll_addr_ |= val;
-      scroll_addr_ <<= 8;
+      T.XXXXX = val >> 3;
+      x = val & 0b111;
     } else {
-      scroll_addr_ |= val;
+      T.YYYYY = val >> 3;
+      T.yyy = val & 0b111;
     }
     addr_latch_ = !addr_latch_;
   } else if (r == PPUADDR) {
     if (!addr_latch_) {
       vram_addr_ = 0x0000;
-      vram_addr_ |= val;
+      // NOTE(oren): lowerpp 6 bits
+      vram_addr_ |= (val & 0x3F);
       vram_addr_ <<= 8;
+      T.yyy = (val >> 5) & 0b11;
+      T.NN = (val >> 3) & 0b11;
+      T.YYYYY &= 0b111;
+      T.YYYYY |= (val & 0b11) << 3;
     } else {
       vram_addr_ |= val;
+      T.YYYYY &= (0b11000);
+      T.YYYYY |= (val >> 5) & 0b111;
+      T.XXXXX = val & 0b11111;
+      syncScroll();
     }
     addr_latch_ = !addr_latch_;
   } else if (r == PPUDATA) {
     write_pending_ = true;
-  } // else if (r == OAMDATA) {
-  //   std::cout << "OAMDATA" << std::endl;
-  // }
+  } else if (r == PPUCTRL) {
+    T.NN = val & 0b11;
+  }
 
   // TODO(oren): confusing control flow
   bool gen_nmi = vBlankNMI();
@@ -56,9 +66,9 @@ void Registers::write(CName r, uint8_t val) {
 
 uint8_t Registers::read(CName r) {
   if (!Readable[r]) {
-    throw std::runtime_error("Attempt to read from write-only PPU Register " +
-                             to_string(r));
+    return io_latch_;
   }
+
   read_pending_ = false;
 
   auto result = regs_[r];
@@ -85,6 +95,7 @@ uint8_t Registers::read(CName r) {
     // return it
     result = regs_[PPUDATA];
   }
+  io_latch_ = result;
   return result;
 }
 uint8_t Registers::getData() {
@@ -120,7 +131,6 @@ const array<uint16_t, 4> Registers::BaseNTAddr = {0x2000, 0x2400, 0x2800,
                                                   0x2C00};
 const array<uint8_t, 2> Registers::VRamAddrInc = {0x01, 0x20};
 const array<uint16_t, 2> Registers::PTableAddr = {0x000, 0x1000};
-const std::array<std::array<uint8_t, 2>, 2> Registers::SpriteSize = {
-    {{8, 8}, {8, 16}}};
+const std::array<uint8_t, 2> Registers::SpriteSize = {8, 16};
 
 } // namespace vid

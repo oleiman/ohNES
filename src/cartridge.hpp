@@ -13,7 +13,8 @@ struct Cartridge {
   uint32_t chrRamSize = 0;
   // TODO(oren): mnemonic would be nice to have here
   uint8_t mirroring = 0;
-  bool hasPrgRam = false;
+  bool hasPrgRam = true;
+  bool prgRamBattery = false;
   uint16_t prgRamSize = 0;
   bool hasTrainer = false;
   bool ignoreMirror = false;

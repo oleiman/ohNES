@@ -8,12 +8,17 @@
 
 #include <array>
 
+namespace sys {
+class NES;
+}
+
 namespace mapper {
-class CNROM : public NESMapperBase<CNROM> {
+class UxROM : public NESMapperBase<UxROM> {
 public:
-  CNROM(cart::Cartridge const &c, vid::Registers &reg,
-        std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
-      : NESMapperBase<CNROM>(c, reg, oam, pad) {}
+  explicit UxROM(sys::NES &console, cart::Cartridge const &c,
+                 vid::Registers &reg, std::array<DataT, 0x100> &oam,
+                 ctrl::JoyPad &pad)
+      : NESMapperBase<UxROM>(console, c, reg, oam, pad) {}
 
   void cartWrite(AddressT addr, DataT data);
   DataT cartRead(AddressT addr);

@@ -4,3 +4,5 @@ build
 build/**/*
 compile_commands.json
 test/**/*.lst
+.cache
+.cache/**/*

@@ -6,10 +6,13 @@
 
 #include <array>
 #include <iostream>
+#include <unordered_map>
 
 namespace vid {
 constexpr int WIDTH = 256;
 constexpr int HEIGHT = 240;
+
+void LoadSystemPalette(const std::string &fname);
 
 class PPU {
   using AddressT = uint16_t;
@@ -19,15 +22,14 @@ class PPU {
   // TODO(oren): const correctness (requires some refactoring in
   // selectNametable)
   struct View {
-    struct Shift {
-      int x;
-      int y;
-    };
     uint8_t x_min;
     uint8_t y_min;
     uint8_t x_max;
     uint8_t y_max;
-    Shift shift;
+    struct {
+      int x;
+      int y;
+    } shift;
     bool contains(int x, int y) const {
       x -= shift.x;
       y -= shift.y;
@@ -41,6 +43,42 @@ class PPU {
     bool describesPixel(int x, int y) const { return view.contains(x, y); }
   };
 
+  enum class Priority {
+    FG = 0,
+    BG = 1,
+  };
+
+  // scroll is opposite mirroring.
+  // e.g. horiz mirror (0) indicates vertical  scroll
+  enum class Scroll {
+    VERTICAL = 0,
+    HORIZONTAL = 1,
+    LOWER = 2,
+    UPPER = 3,
+  };
+
+  union Sprite {
+    struct {
+      uint8_t xpos;
+      uint8_t tile_lo;
+      uint8_t tile_hi;
+      union {
+        struct {
+          uint8_t palette_i : 2;
+          uint8_t _ : 3;
+          uint8_t priority : 1;
+          uint8_t h_flip : 1;
+          uint8_t v_flip : 1;
+        } __attribute__((packed)) s;
+        uint8_t v;
+      } attrs;
+      uint8_t idx;
+      uint8_t _;
+      uint16_t __;
+    } __attribute__((packed)) s;
+    uint64_t v;
+  };
+
   friend std::ostream &operator<<(std::ostream &os, const Nametable &in);
 
 public:
@@ -50,8 +88,11 @@ public:
   FrameBuffer const &frameBuffer() { return framebuf_; }
 
   void step(uint16_t cycles, bool &nmi);
+
   // void reset();
   bool render();
+  uint16_t currScanline() { return scanline_; }
+  uint16_t currCycle() { return cycle_; }
   Nametable selectNametable(int x, int y);
   void renderBgPixel(uint16_t nt_base, View const &view, int abs_x, int abs_y);
   void renderSpritePixel(int abs_x, int abs_y);
@@ -60,6 +101,8 @@ public:
   // For debugging and ROM exploratory purposes
   void showTile(uint8_t x, uint8_t y, uint8_t bank, uint8_t tile);
   void showPatternTable();
+
+  Scroll scrollType() { return Scroll(mapper_.mirroring()); }
 
 private:
   void visibleLine();
@@ -76,6 +119,20 @@ private:
 
   std::pair<Nametable, Nametable> constructNametables();
 
+  void SetSpriteZeroHit() {
+    if (!szh_) {
+      szh_ = true;
+      registers_.setSpriteZeroHit(szh_);
+    }
+  }
+
+  void ClearSpriteZeroHit() {
+    if (szh_) {
+      szh_ = false;
+      registers_.setSpriteZeroHit(szh_);
+    }
+  }
+
   FrameBuffer framebuf_{};
   mapper::NESMapper &mapper_;
   Registers &registers_;
@@ -83,40 +140,17 @@ private:
   uint16_t cycle_ = 0;
   uint16_t scanline_ = 261; // initialize to pre-render scanline
   std::array<uint8_t, 32> secondary_oam_{};
-  bool bg_nonzero_ = false;
-  bool sprite_nonzero_ = false;
+  bool bg_zero_ = false;
+  bool szh_ = false;
+  bool renderedSprite_ = false;
 
-  std::array<uint8_t, 8> sprite_attrs{};
-  std::array<uint8_t, 8> sprite_xpos{};
-  std::array<uint8_t, 8> sprite_tiles_l{};
-  std::array<uint8_t, 8> sprite_tiles_h{};
+  std::array<Sprite, 8> sprites_{};
 
-  std::array<std::array<uint8_t, 3>, 64> SystemPalette = {
-      {
-          {0x80, 0x80, 0x80}, {0x00, 0x3D, 0xA6}, {0x00, 0x12, 0xB0},
-          {0x44, 0x00, 0x96}, {0xA1, 0x00, 0x5E}, {0xC7, 0x00, 0x28},
-          {0xBA, 0x06, 0x00}, {0x8C, 0x17, 0x00}, {0x5C, 0x2F, 0x00},
-          {0x10, 0x45, 0x00}, {0x05, 0x4A, 0x00}, {0x00, 0x47, 0x2E},
-          {0x00, 0x41, 0x66}, {0x00, 0x00, 0x00}, {0x05, 0x05, 0x05}, //
-          {0x05, 0x05, 0x05}, {0xC7, 0xC7, 0xC7}, {0x00, 0x77, 0xFF},
-          {0x21, 0x55, 0xFF}, {0x82, 0x37, 0xFA}, {0xEB, 0x2F, 0xB5},
-          {0xFF, 0x29, 0x50}, {0xFF, 0x22, 0x00}, {0xD6, 0x32, 0x00},
-          {0xC4, 0x62, 0x00}, {0x35, 0x80, 0x00}, {0x05, 0x8F, 0x00},
-          {0x00, 0x8A, 0x55}, {0x00, 0x99, 0xCC}, {0x21, 0x21, 0x21},
-          {0x09, 0x09, 0x09}, {0x09, 0x09, 0x09}, {0xFF, 0xFF, 0xFF},
-          {0x0F, 0xD7, 0xFF}, {0x69, 0xA2, 0xFF}, {0xD4, 0x80, 0xFF},
-          {0xFF, 0x45, 0xF3}, {0xFF, 0x61, 0x8B}, {0xFF, 0x88, 0x33},
-          {0xFF, 0x9C, 0x12}, {0xFA, 0xBC, 0x20}, {0x9F, 0xE3, 0x0E},
-          {0x2B, 0xF0, 0x35}, {0x0C, 0xF0, 0xA4}, {0x05, 0xFB, 0xFF},
-          {0x5E, 0x5E, 0x5E}, {0x0D, 0x0D, 0x0D}, {0x0D, 0x0D, 0x0D},
-          {0xFF, 0xFF, 0xFF}, {0xA6, 0xFC, 0xFF}, {0xB3, 0xEC, 0xFF},
-          {0xDA, 0xAB, 0xEB}, {0xFF, 0xA8, 0xF9}, {0xFF, 0xAB, 0xB3},
-          {0xFF, 0xD2, 0xB0}, {0xFF, 0xEF, 0xA6}, {0xFF, 0xF7, 0x9C},
-          {0xD7, 0xE8, 0x95}, {0xA6, 0xED, 0xAF}, {0xA2, 0xF2, 0xDA},
-          {0x99, 0xFF, 0xFC}, {0xDD, 0xDD, 0xDD}, {0x11, 0x11, 0x11},
-          {0x11, 0x11, 0x11},
-      },
-  };
+  static std::array<std::array<uint8_t, 3>, 64> SystemPalette;
+  static std::unordered_map<Scroll, std::unordered_map<AddressT, AddressT>>
+      SecondaryNTMap;
+
+  friend void LoadSystemPalette(const std::string &fname);
 };
 
 } // namespace vid

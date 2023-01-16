@@ -4,3 +4,6 @@
 [submodule "external/nativefiledialog"]
 	path = external/nativefiledialog
 	url = https://github.com/mlabbe/nativefiledialog.git
+[submodule "test/nes-test-roms"]
+	path = test/nes-test-roms
+	url = https://github.com/christopherpow/nes-test-roms.git

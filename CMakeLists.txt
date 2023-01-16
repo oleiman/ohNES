@@ -17,12 +17,13 @@ add_executable(ohNES
   src/system.cpp
   src/ppu_registers.cpp
   src/cartridge.cpp
-  # src/mappers/base_mapper.cpp
   src/mappers/cnrom.cpp
-  # src/mappers/ppu_map.cpp
-  src/mappers/mmc1.cpp
+  src/mappers/color_dreams.cpp
+  src/mappers/mmc1_2.cpp
   src/mappers/nrom.cpp
   src/mappers/uxrom.cpp
+  src/mappers/mmc2.cpp
+  src/mappers/mmc3.cpp
   src/mappers/mapper_factory.cpp
   src/ppu.cpp
   src/joypad.cpp
@@ -37,12 +38,20 @@ find_package(SDL2 REQUIRED)
 #   target_include_directories(ohNES PRIVATE ${GTK3_LIBRARY_DIRS})
 #   add_definitions(${GTK3_CFLAGS_OTHER})
 # endif()
+if (APPLE)
+  find_library(APPKIT_LIB AppKit)
+  # target_link_libraries(ohNES PRIVATE ${APPKIT_LIB})
+endif()
 
-target_include_directories(ohNES PRIVATE inc ${SDL2_INCLUDE_DIRS} external/nativefiledialog/src/include)
+target_include_directories(ohNES PRIVATE src ${SDL2_INCLUDE_DIRS} external/nativefiledialog/src/include external/inc)
 target_link_directories(ohNES PRIVATE external/nativefiledialog/build/lib/Release/x64)
 set_property(TARGET ohNES PROPERTY CXX_STANDARD 17)
 
-target_link_libraries(ohNES 6502-emu ${SDL2_LIBRARIES} profiler nfd)
+if (LINUX AND NOT APPLE)
+set(GPERF_LIB profiler)
+endif()
+
+target_link_libraries(ohNES 6502-emu ${SDL2_LIBRARIES} ${GPERF_LIB} nfd ${APPKIT_LIB})
 # if (LINUX AND NOT APPLE)
 #   target_link_libraries(ohNES ${GTK3_LIBRARIES})
 # endif()

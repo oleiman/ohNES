@@ -10,14 +10,14 @@
 // that functionality apart. TBD.
 namespace vid {
 class Registers {
-  static const uint8_t BIT0 = 0b00000001;
-  static const uint8_t BIT1 = 0b00000010;
-  static const uint8_t BIT2 = 0b00000100;
-  static const uint8_t BIT3 = 0b00001000;
-  static const uint8_t BIT4 = 0b00010000;
-  static const uint8_t BIT5 = 0b00100000;
-  static const uint8_t BIT6 = 0b01000000;
-  static const uint8_t BIT7 = 0b10000000;
+  static constexpr uint8_t BIT0 = 0b00000001;
+  static constexpr uint8_t BIT1 = 0b00000010;
+  static constexpr uint8_t BIT2 = 0b00000100;
+  static constexpr uint8_t BIT3 = 0b00001000;
+  static constexpr uint8_t BIT4 = 0b00010000;
+  static constexpr uint8_t BIT5 = 0b00100000;
+  static constexpr uint8_t BIT6 = 0b01000000;
+  static constexpr uint8_t BIT7 = 0b10000000;
 
 public:
   enum CName {
@@ -40,9 +40,9 @@ public:
   /*** PPUCTRL Accessors ***/
   uint16_t baseNametableAddr();
   uint8_t vRamAddrInc();
-  uint16_t spritePTableAddr();
+  uint16_t spritePTableAddr(uint8_t idx);
   uint16_t backgroundPTableAddr();
-  std::array<uint8_t, 2> const &spriteSize();
+  uint8_t spriteSize();
 
   // false: read backdrop from EXT pins
   // true: output color on EXT pins
@@ -79,6 +79,47 @@ public:
   uint16_t scrollAddr();
   uint8_t scrollX();
   uint8_t scrollY();
+  uint8_t scrollX_fine();
+  uint8_t scrollY_fine();
+  uint8_t scrollX_coarse();
+  uint8_t scrollY_coarse();
+  void syncScroll() { V = T; }
+  void syncScrollX() {
+    V.XXXXX = T.XXXXX;
+    V.NN = (V.NN & 0b10) | (T.NN & 0b01);
+  }
+  void syncScrollY() {
+    V.YYYYY = T.YYYYY;
+    V.yyy = T.yyy;
+    V.NN = (V.NN & 0b01) | (T.NN & 0b10);
+  }
+
+  /*  Scroll Increment functions. Not useful right now since we generate the
+   * whole bounding box the nametables at each pixel (ideally once per
+   * scanline). Leaving these in place as a reference. */
+  void incHorizScroll() {
+    if (V.XXXXX == 31) {
+      V.XXXXX = 0;
+      V.NN ^= 0b01;
+    } else {
+      V.XXXXX++;
+    }
+  }
+  void incVertScroll() {
+    if (V.yyy < 7) {
+      V.yyy++;
+    } else {
+      V.yyy = 0;
+      if (V.YYYYY == 29) {
+        V.YYYYY = 0;
+        V.NN ^= 0b10;
+      } else if (V.YYYYY == 31) {
+        V.YYYYY = 0;
+      } else {
+        V.YYYYY++;
+      }
+    }
+  }
   uint16_t vRamAddr();
   /*END Address Accessors ***/
 
@@ -95,9 +136,21 @@ public:
   uint16_t oamCycles();
 
 private:
+  struct scroll_var {
+    uint8_t yyy : 3;
+    uint8_t NN : 2;
+    uint8_t YYYYY : 5;
+    uint8_t XXXXX : 5;
+  };
+
+  //  https://forums.nesdev.org/viewtopic.php?t=21527
+  scroll_var T;
+  scroll_var V;
+  uint8_t x;
+
   std::array<uint8_t, 8> regs_{};
   bool addr_latch_ = false;
-  uint16_t scroll_addr_ = 0x0000;
+  uint8_t io_latch_ = 0;
   uint16_t vram_addr_ = 0x0000;
   bool write_pending_ = false;
   bool read_pending_ = false;
@@ -109,20 +162,18 @@ private:
   const static std::array<uint16_t, 4> BaseNTAddr;
   const static std::array<uint8_t, 2> VRamAddrInc;
   const static std::array<uint16_t, 2> PTableAddr;
-  const static std::array<std::array<uint8_t, 2>, 2> SpriteSize;
+  const static std::array<uint8_t, 2> SpriteSize;
 };
 
-inline uint16_t Registers::baseNametableAddr() {
-  return BaseNTAddr[regs_[PPUCTRL] & (BIT0 | BIT1)];
-}
+inline uint16_t Registers::baseNametableAddr() { return BaseNTAddr[V.NN]; }
 
 inline uint8_t Registers::vRamAddrInc() {
   uint8_t i = (regs_[PPUCTRL] & BIT2) >> 2;
   return VRamAddrInc[i];
 }
 
-inline uint16_t Registers::spritePTableAddr() {
-  uint8_t i = (regs_[PPUCTRL] & BIT3) >> 3;
+inline uint16_t Registers::spritePTableAddr(uint8_t idx) {
+  uint8_t i = (spriteSize() == 8 ? (regs_[PPUCTRL] & BIT3) >> 3 : idx & 0b1);
   return PTableAddr[i];
 }
 
@@ -131,7 +182,7 @@ inline uint16_t Registers::backgroundPTableAddr() {
   return PTableAddr[i];
 }
 
-inline std::array<uint8_t, 2> const &Registers::spriteSize() {
+inline uint8_t Registers::spriteSize() {
   uint8_t i = (regs_[PPUCTRL] & BIT5) >> 5;
   return SpriteSize[i];
 }
@@ -153,8 +204,9 @@ inline bool Registers::spriteOverflow() { return regs_[PPUSTATUS] & BIT5; }
 inline bool Registers::spriteZeroHit() { return regs_[PPUSTATUS] & BIT6; }
 inline void Registers::setSpriteZeroHit(bool val) {
   // if the new and current values differ, flip the appropriate bit
-  if (val != spriteZeroHit()) {
-    regs_[PPUSTATUS] ^= (1 << 6);
+  regs_[PPUSTATUS] &= ~BIT6;
+  if (val) {
+    regs_[PPUSTATUS] |= BIT6;
   }
 }
 inline bool Registers::vBlankStarted() { return regs_[PPUSTATUS] & BIT7; }
@@ -165,9 +217,12 @@ inline void Registers::clearVBlankStarted() { regs_[PPUSTATUS] &= ~BIT7; }
 inline uint8_t Registers::oamAddr() { return regs_[OAMADDR]; }
 inline uint8_t Registers::oamData() { return regs_[OAMDATA]; }
 
-inline uint16_t Registers::scrollAddr() { return scroll_addr_; }
-inline uint8_t Registers::scrollX() { return (scroll_addr_ >> 8) & 0xFF; }
-inline uint8_t Registers::scrollY() { return scroll_addr_ & 0xFF; }
+inline uint8_t Registers::scrollX() {
+  return ((V.NN & 0b1) * 256) + (V.XXXXX * 8) + x;
+}
+inline uint8_t Registers::scrollY() {
+  return (((V.NN >> 1) & 0b1) * 256) + (V.YYYYY * 8) + V.yyy;
+}
 inline uint16_t Registers::vRamAddr() { return vram_addr_; }
 
 inline bool Registers::writePending() { return write_pending_; }

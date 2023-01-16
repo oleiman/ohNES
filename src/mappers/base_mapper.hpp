@@ -7,7 +7,13 @@
 
 #include <array>
 
+namespace sys {
+class NES;
+}
+
 namespace mapper {
+
+// TODO(oren): constness
 class NESMapper : public mem::Mapper {
 public:
   using AddressT = uint16_t;
@@ -17,6 +23,8 @@ public:
   virtual DataT read(AddressT) = 0;
   virtual void ppu_write(AddressT, DataT) = 0;
   virtual DataT ppu_read(AddressT) = 0;
+  virtual uint8_t mirroring(void) const = 0;
+  virtual bool setPpuABus(AddressT) = 0;
 };
 
 template <class Derived> class NESMapperBase : public NESMapper {
@@ -24,6 +32,7 @@ public:
   using CName = vid::Registers::CName;
 
 protected:
+  sys::NES &console_;
   cart::Cartridge const &cart_;
   std::array<DataT, 0x800> internal_{};
   vid::Registers &ppu_reg_;
@@ -35,15 +44,21 @@ protected:
   uint8_t chrBankSelect = 0;
 
 public:
-  NESMapperBase(cart::Cartridge const &c, vid::Registers &reg,
-                std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
-      : cart_(c), ppu_reg_(reg), ppu_oam_(oam), joypad_(pad) {}
+  NESMapperBase(sys::NES &console, cart::Cartridge const &c,
+                vid::Registers &reg, std::array<DataT, 0x100> &oam,
+                ctrl::JoyPad &pad)
+      : console_(console), cart_(c), ppu_reg_(reg), ppu_oam_(oam),
+        joypad_(pad) {}
   virtual ~NESMapperBase() = default;
+
+  virtual uint8_t mirroring() const override { return cart_.mirroring; }
+
+  virtual bool setPpuABus(AddressT) override { return false; }
 
   constexpr static size_t size = 1ul << (sizeof(AddressT) * 8);
 
   // TODO(oren): magic numbers
-  void write(AddressT addr, DataT data) {
+  void write(AddressT addr, DataT data) override {
     if (addr < 0x2000) {
       internal_[addr & 0x7FF] = data;
     } else if (addr < 0x4000) {
@@ -63,7 +78,7 @@ public:
       static_cast<Derived *>(this)->cartWrite(addr, data);
     }
   }
-  DataT read(AddressT addr) {
+  DataT read(AddressT addr) override {
     if (addr < 0x2000) {
       return internal_[addr & 0x7FF];
     } else if (addr < 0x4000) {
@@ -84,21 +99,29 @@ public:
       return static_cast<Derived *>(this)->cartRead(addr);
     }
   }
-  void ppu_write(AddressT addr, DataT data) {
+
+  void ppu_write(AddressT addr, DataT data) override {
+    // setPpuABus(addr);
     if (addr < 0x2000 && cart_.chrRamSize) {
       static_cast<Derived *>(this)->chrWrite(addr, data);
     } else if (addr < 0x3F00) {
-      addr = mirror_vram_addr(addr, cart_.mirroring);
+      addr = mirror_vram_addr(addr, static_cast<Derived *>(this)->mirroring());
       nametable_[addr] = data;
     } else {
-      palette_[addr & 0x1F] = data;
+      uint8_t idx = addr & 0x1F;
+      palette_[idx] = data;
+      if (idx % 4 == 0) {
+        palette_[idx ^ 0x10] = data;
+      }
     }
   }
-  DataT ppu_read(AddressT addr) {
+
+  DataT ppu_read(AddressT addr) override {
+    // setPpuABus(addr);
     if (addr < 0x2000) {
       return static_cast<Derived *>(this)->chrRead(addr);
     } else if (addr < 0x3F00) {
-      addr = mirror_vram_addr(addr, cart_.mirroring);
+      addr = mirror_vram_addr(addr, static_cast<Derived *>(this)->mirroring());
       return nametable_[addr];
     } else {
       return palette_[addr & 0x1F];
@@ -139,7 +162,7 @@ protected:
         result = 0x400 | off;
         break;
       }
-    } else { // vertical
+    } else if (mirroring == 1) { // vertical
       switch (nt) {
       case 0:
       case 2:
@@ -150,6 +173,10 @@ protected:
         result = 0x400 | off;
         break;
       }
+    } else if (mirroring == 2) { // single-bank lower
+      result = off;
+    } else { // single-bank upper
+      result = 0x400 | off;
     }
     return result;
   }

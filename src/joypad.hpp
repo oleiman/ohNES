@@ -15,6 +15,7 @@ enum class Button {
   Down,
   Left,
   Right,
+  N_BUTTONS,
 };
 
 struct JoyPad {
@@ -24,7 +25,7 @@ struct JoyPad {
   void toggleStrobe();
 
 private:
-  std::array<uint8_t, 8> state_ = {};
+  std::array<uint8_t, static_cast<size_t>(Button::N_BUTTONS)> state_ = {};
   uint8_t curr_ = 0;
   bool strobe_ = false;
 };

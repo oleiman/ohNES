@@ -22,6 +22,9 @@ public:
   void reset() { cpu_.reset(); };
   cpu::CpuState const &state() { return cpu_.state(); }
   ctrl::JoyPad joypad_1;
+  bool &irqPin() { return cpu_.irqPin(); }
+  uint16_t currScanline() { return ppu_.currScanline(); }
+  uint16_t currPpuCycle() { return ppu_.currCycle(); }
 
 private:
   bool debug_;

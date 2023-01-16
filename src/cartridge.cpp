@@ -92,7 +92,7 @@ void Cartridge::parseHeader(array<uint8_t, 16> hdr) {
   }
 
   mirroring = hdr[6] & MIRRORING;
-  hasPrgRam = hdr[6] & PRGRAM;
+  prgRamBattery = hdr[6] & PRGRAM;
   hasTrainer = (hdr[6] & TRAINER) > 0;
   ignoreMirror = (hdr[6] & IGNOREMIR) > 0;
 
@@ -125,13 +125,14 @@ ostream &operator<<(ostream &os, Cartridge const &in) {
     ss << "\t" B_CYAN(string("CHR ROM size")) << ": 0x" << +in.chrRom.size()
        << "B" << endl;
   }
+  if (in.hasPrgRam) {
+    ss << B_CYAN(string("\tPRG RAM size")) << ": 0x" << +in.prgRamSize << "B"
+       << endl;
+  }
   ss << "\t" << B_CYAN(string("Mapper: ")) << +in.mapper << endl;
   ss << "\t" << (in.mirroring == 0 ? "Horizontal" : "Vertical") << " mirroring"
      << endl;
-  if (in.hasPrgRam) {
-    ss << "\tPRG RAM size:"
-       << ": 0x" << +in.prgRamSize << "B" << endl;
-  }
+
   if (in.hasTrainer) {
     ss << "\tTrainer at $7000 - $71FF" << endl;
   }
