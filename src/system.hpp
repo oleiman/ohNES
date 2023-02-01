@@ -31,7 +31,7 @@ private:
   cart::Cartridge cartridge_;
   vid::Registers ppu_registers_;
   std::array<uint8_t, 256> ppu_oam_ = {};
-  std::unique_ptr<mapper::NESMapper> cpu_map_;
+  std::unique_ptr<mapper::NESMapper> mapper_;
   vid::PPU ppu_;
   cpu::M6502 cpu_;
   dbg::Debugger debugger_;

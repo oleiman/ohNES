@@ -11,9 +11,9 @@ using mapper::MapperFactory;
 namespace sys {
 NES::NES(std::string_view const &romfile, bool debug)
     : debug_(debug), cartridge_(romfile),
-      cpu_map_(
+      mapper_(
           MapperFactory(*this, cartridge_, ppu_registers_, ppu_oam_, joypad_1)),
-      ppu_(*cpu_map_, ppu_registers_, ppu_oam_), cpu_(*cpu_map_, false),
+      ppu_(*mapper_, ppu_registers_, ppu_oam_), cpu_(*mapper_, false),
       debugger_(true, false) {
   cpu_.reset();
   std::cerr << cartridge_ << std::endl;
