@@ -25,7 +25,7 @@ void NES::step() {
 }
 
 bool NES::render(RenderBuffer &renderBuf) {
-  if (cpu_.nmiPin() && ppu_.render()) {
+  if (cpu_.nmiPin() && ppu_.rendering()) {
     std::copy(ppu_.frameBuffer().begin(), ppu_.frameBuffer().end(),
               renderBuf.begin());
     return true;

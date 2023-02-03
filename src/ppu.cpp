@@ -9,28 +9,6 @@ namespace vid {
 
 std::array<std::array<uint8_t, 3>, 64> PPU::SystemPalette = {};
 
-// TODO(oren): how to work this out for e.g. zelda
-std::unordered_map<PPU::Scroll,
-                   std::unordered_map<PPU::AddressT, PPU::AddressT>>
-    PPU::SecondaryNTMap = {{
-        // HORIZONTAL scroll (vertical mirror)
-        {
-            Scroll::HORIZONTAL,
-            {{0x2000, 0x2400},
-             {0x2400, 0x2000},
-             {0x2800, 0x2C00},
-             {0x2C00, 0x2800}},
-        },
-        // VERTICAL scroll (horizontal mirror)
-        {
-            Scroll::VERTICAL,
-            {{0x2000, 0x2800},
-             {0x2800, 0x2000},
-             {0x2400, 0x2C00},
-             {0x2C00, 0x2400}},
-        },
-    }};
-
 void LoadSystemPalette(const std::string &fname) {
   std::ifstream istrm(fname, std::ios::binary);
   int i = 0;
@@ -61,12 +39,10 @@ void PPU::step(uint16_t cycles, bool &nmi) {
       ClearSpriteZeroHit();
       registers_.clearVBlankStarted();
     } else if (scanline_ >= 262) {
-      // registers_.clearVBlankStarted();
       scanline_ = 0;
-      renderedSprite_ = false;
     }
 
-    if (!render()) {
+    if (!rendering()) {
       vBlankLine();
     } else if (scanline_ < 240) {
       visibleLine();
@@ -74,13 +50,12 @@ void PPU::step(uint16_t cycles, bool &nmi) {
     } else if (scanline_ < 261) {
       vBlankLine();
     } else if (scanline_ == 261) {
-      // TODO(oren): pre-render scanline?
+      // pre-render scanline
+      // TODO(oren): not sure this is exactly the same as a visible line.
+      // memory reads should be the same (to prepare first two tiles of next
+      // line) but it doesn't make sense to actually render.
+      visibleLine();
       if (cycle_ == 260) {
-        // if (mapper_.setPpuABus(0x1000)) {
-        //   // std::cout << "fired irq from pre-render scanline " << +scanline_
-        //   //           << std::endl;
-        // }
-        // mapper_.setPpuABus(0x0000);
       } else if (280 <= cycle_ && cycle_ <= 304) {
         registers_.syncScrollY();
       }
@@ -110,158 +85,107 @@ void PPU::visibleLine() {
 
   // NOTE(oren): do nothing on cycle 0
   if (cycle_ >= 1 && cycle_ < 257) { // Data for current scanline
-    int pixel_absolute_x = cycle_ - 1;
-    int pixel_absolute_y = scanline_;
+    int dot_x = cycle_ - 1;
+    int dot_y = scanline_;
 
+    LoadBackground();
     if (registers_.showBackground()) {
-      auto nt = selectNametable(pixel_absolute_x, pixel_absolute_y);
-      renderBgPixel(nt.base, nt.view, pixel_absolute_x, pixel_absolute_y);
+      renderBgPixel(dot_x, dot_y);
     }
 
     if (registers_.showSprites()) {
-      renderSpritePixel(pixel_absolute_x, pixel_absolute_y);
+      renderSpritePixel(dot_x, dot_y);
+    }
+    backgroundSR_.Shift();
+    if (cycle_ == 256) {
+      registers_.incVertScroll();
     }
   } else if (cycle_ == 257) {
     registers_.syncScrollX();
   } else if (cycle_ == 260) {
-    // NOTE(oren): hack for mmc3, required because we calculate nametable stuff
-    // on every cycle and evaluate sprites wholesale at the very end of the
-    // scanline
-    // if (mapper_.setPpuABus(0x1000)) {
-    //   std::cout << "fired irq at scanline " << +scanline_ << std::endl;
-    // }
-    // mapper_.setPpuABus(0x0000);
-  } else if (cycle_ == 340) {
-    // NOTE(oren): Pack sprite evaluation logic into last cycle on the
-    // scanline for simplicity. Regain 5 sanity points and cure "Terror"
-    // effect.
     evaluateSprites();
+  } else if (321 <= cycle_ && cycle_ <= 336) {
+    LoadBackground();
+    backgroundSR_.Shift();
+  } else if (cycle_ == 337 || cycle_ == 339) {
+    // garbage nametable reads (timing for mmc5?)
+    fetchNametable();
   }
 }
 
-// NOTE(oren): this only allows for scrolling in one direction at a time. that
-// is, if we're not scrolling in the x direction, we're scrolling in the y
-// direction. additionally, there's no distinction made between coarse and fine
-// scroll bits. instead, we just treat the X and Y scroll bytes geometrically,
-// describing the portion of the visible screen that should map to each
-// nametable.
-PPU::Nametable PPU::selectNametable(int x, int y) {
-
-  auto [primary, secondary] = constructNametables();
-
-  if (primary.describesPixel(x, y)) {
-    return primary;
-  } else if (secondary.describesPixel(x, y)) {
-    return secondary;
-  } else {
-    std::stringstream ss;
-    ss << "Pixel (" << +x << ", " << +y << ") out of range?" << std::endl;
-    ss << "Primary " << primary << std::endl;
-    ss << "Secondary " << secondary;
-    throw std::runtime_error(ss.str());
+void PPU::LoadBackground() {
+  switch (cycle_ & 0b111) {
+  case 0b000:
+    registers_.incHorizScroll();
+    break;
+  case 0b001:
+    backgroundSR_.Load();
+    fetchNametable();
+    break;
+  case 0b011:
+    fetchAttribute();
+    break;
+  case 0b101:
+    fetchPattern(PTOff::LOW);
+    break;
+  case 0b111:
+    fetchPattern(PTOff::HIGH);
+    break;
+  default:
+    break;
   }
 }
 
-std::pair<PPU::Nametable, PPU::Nametable> PPU::constructNametables() {
-  if (scrollType() == Scroll::HORIZONTAL) {
-    Nametable primary = {
-        .base = registers_.baseNametableAddr(),
-        .view =
-            {
-                .x_min = registers_.scrollX(),
-                .y_min = 0,
-                .x_max = 255,
-                .y_max = 239,
-                .shift =
-                    {
-                        .x = -registers_.scrollX(),
-                        .y = 0,
-                    },
-            },
-    };
-    Nametable secondary = {
-        .base = SecondaryNTMap[scrollType()][primary.base],
-        .view =
-            {
-                .x_min = 0,
-                .y_min = 0,
-                .x_max = registers_.scrollX(),
-                .y_max = 239,
-                .shift =
-                    {
-                        .x = 255 - registers_.scrollX(),
-                        .y = 0,
-                    },
-            },
-    };
-    return std::make_pair<>(primary, secondary);
-  } else if (scrollType() == Scroll::VERTICAL) {
-    Nametable primary = {
-        .base = registers_.baseNametableAddr(),
-        .view =
-            {
-                .x_min = 0,
-                .y_min = registers_.scrollY(),
-                .x_max = 255,
-                .y_max = 239,
-                .shift =
-                    {
-                        .x = 0,
-                        .y = -registers_.scrollY(),
-                    },
-            },
-    };
-    Nametable secondary = {
-        .base = SecondaryNTMap[scrollType()][primary.base],
-        // static_cast<AddressT>(0x2000 + ((primary.base - 0x2000 + 0x800))),
-        .view =
-            {
-                .x_min = 0,
-                .y_min = 0,
-                .x_max = 255,
-                .y_max = registers_.scrollY(),
-                .shift =
-                    {
-                        .x = 0,
-                        .y = 239 - registers_.scrollY(),
-                    },
-            },
-    };
-    return std::make_pair<>(primary, secondary);
-  } else { // single table (ignore scroll?)
-    Nametable primary = {
-        .base = registers_.baseNametableAddr(),
-        .view =
-            {
-                .x_min = 0,
-                .y_min = 0,
-                .x_max = 255,
-                .y_max = 239,
-                .shift =
-                    {
-                        .x = 0,
-                        .y = 0,
-                    },
-            },
-    };
-    return std::make_pair<>(primary, primary);
-  }
-}
-
-void PPU::renderBgPixel(uint16_t nt_base, View const &view, int abs_x,
-                        int abs_y) {
-  uint8_t pixel_x = abs_x - view.shift.x;
-  uint8_t pixel_y = abs_y - view.shift.y;
-  int x = pixel_x % 8;
-  int y = pixel_y % 8;
-  int tile_x = pixel_x / 8;
-  int tile_y = pixel_y / 8;
-  auto palette = bgPalette(nt_base, tile_x, tile_y);
+void PPU::fetchNametable() {
+  uint8_t pixel_x = registers_.scrollX_coarse();
+  uint8_t pixel_y = registers_.scrollY();
+  AddressT base = registers_.baseNametableAddr();
+  int tile_x = pixel_x >> 3;
+  int tile_y = pixel_y >> 3;
   int nametable_i = tile_y * 32 + tile_x;
-  auto tile = static_cast<uint16_t>(readByte(nt_base + nametable_i));
+  nametable_reg = readByte(base + nametable_i);
+}
+
+void PPU::fetchAttribute() {
+  uint8_t pixel_x = registers_.scrollX_coarse();
+  uint8_t pixel_y = registers_.scrollY();
+  AddressT base = registers_.baseNametableAddr();
+  int tile_x = pixel_x >> 3;
+  int tile_y = pixel_y >> 3;
+  int block_x = pixel_x >> 5;
+  int block_y = pixel_y >> 5;
+  uint16_t attr_table_base = base + 0x3c0;
+  auto at_entry = readByte(attr_table_base + (block_y * 8 + block_x));
+  uint8_t meta_x = (tile_x & 0x03) >> 1;
+  uint8_t meta_y = (tile_y & 0x03) >> 1;
+  uint8_t shift = (meta_y * 2 + meta_x) << 1;
+  uint8_t val = (at_entry >> shift) & 0b11;
+  backgroundSR_.attr_lo.Latch(0xFF * (val & 0b1));
+  backgroundSR_.attr_hi.Latch(0xFF * ((val >> 1) & 0b1));
+}
+
+void PPU::fetchPattern(PTOff plane) {
+  uint8_t pixel_y = registers_.scrollY();
+  int y = pixel_y % 8;
+  auto tile = static_cast<uint16_t>(nametable_reg);
   auto tile_base = registers_.backgroundPTableAddr() + tile * 16;
-  auto lower = readByte(tile_base + y) >> (7 - x);
-  auto upper = readByte(tile_base + y + 8) >> (7 - x);
+  auto val = readByte(tile_base + y + static_cast<uint16_t>(plane));
+  util::reverseByte(val);
+  switch (plane) {
+  case PTOff::LOW:
+    backgroundSR_.pattern_lo.Latch(val);
+    break;
+  case PTOff::HIGH:
+    backgroundSR_.pattern_hi.Latch(val);
+    break;
+  }
+}
+
+void PPU::renderBgPixel(int abs_x, int abs_y) {
+  uint8_t fine_x = registers_.scrollX_fine();
+  auto palette = bgPalette();
+  auto lower = backgroundSR_.pattern_lo.value >> fine_x;
+  auto upper = backgroundSR_.pattern_hi.value >> fine_x;
   auto value = ((upper & 0x01) << 1) | (lower & 0x01);
   bg_zero_ = (value == 0);
   set_pixel(abs_x, abs_y, SystemPalette[palette[value]]);
@@ -351,7 +275,6 @@ void PPU::evaluateSprites() {
     }
     sprite.s.tile_lo = readByte(tile_base + tile_y);
     sprite.s.tile_hi = readByte(tile_base + tile_y + 8);
-    renderedSprite_ = true;
     if (!sprite.s.attrs.s.h_flip) {
       util::reverseByte(sprite.s.tile_lo);
       util::reverseByte(sprite.s.tile_hi);
@@ -378,22 +301,18 @@ void PPU::vBlankLine() {
   }
 }
 
-bool PPU::render() {
+bool PPU::rendering() {
   return registers_.showBackground() || registers_.showSprites();
 }
 
-std::array<uint8_t, 4> PPU::bgPalette(uint16_t base, uint16_t tile_x,
-                                      uint16_t tile_y) {
-  uint16_t attribute_table_base = base + 0x3c0;
-  uint8_t block_x = tile_x >> 2;
-  uint8_t block_y = tile_y >> 2;
-  auto at_entry = readByte(attribute_table_base + (block_y * 8 + block_x));
-  uint8_t meta_x = (tile_x & 0x03) >> 1;
-  uint8_t meta_y = (tile_y & 0x03) >> 1;
-  uint8_t shift = (meta_y * 2 + meta_x) << 1;
-  uint8_t pidx = ((at_entry >> shift) & 0b11) << 2;
+std::array<uint8_t, 4> PPU::bgPalette() {
+  auto fine_x = registers_.scrollX_fine();
+  auto lo = (backgroundSR_.attr_lo.value >> fine_x) & 0b1;
+  auto hi = (backgroundSR_.attr_hi.value >> fine_x) & 0b1;
 
-  // TODO(oren): don't allocate this every time
+  uint8_t attr = ((hi << 1) | lo) & 0b11;
+  uint8_t pidx = attr << 2;
+
   return {
       readByte(0x3f00),
       readByte(0x3f01 + pidx),
@@ -471,23 +390,6 @@ void PPU::showTile(uint8_t x, uint8_t y, uint8_t bank, uint8_t tile) {
     }
     ++base;
   }
-}
-
-std::ostream &operator<<(std::ostream &os, PPU::Nametable const &in) {
-  std::stringstream ss;
-  ss << std::hex;
-  ss << "Base: 0x" << in.base << std::endl;
-  ss << std::dec;
-  ss << "View: " << std::endl;
-  ss << "\tMin: (" << +in.view.x_min << ", " << +in.view.y_min << ")"
-     << std::endl;
-  ss << "\tMax: (" << +in.view.x_max << ", " << +in.view.y_max << ")"
-     << std::endl;
-  ss << "\tShift: " << std::endl;
-  ss << "\t\tX: " << +in.view.shift.x << std::endl;
-  ss << "\t\tY: " << +in.view.shift.y << std::endl;
-  os << ss.str();
-  return os;
 }
 
 } // namespace vid

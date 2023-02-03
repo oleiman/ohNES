@@ -3,6 +3,7 @@
 #include <array>
 #include <assert.h>
 #include <cstdint>
+#include <iostream>
 
 // TODO(oren): Split this up. `Registers` is acting as both access point for PPU
 // Registers *AND* a signalling medium between the CPU memory mapper and the
@@ -101,9 +102,11 @@ public:
     if (V.XXXXX == 31) {
       V.XXXXX = 0;
       V.NN ^= 0b01;
+      // std::cout << "nt: " << std::bitset<2>(V.NN) << std::endl;
     } else {
       V.XXXXX++;
     }
+    // std::cout << +V.XXXXX << std::endl;
   }
   void incVertScroll() {
     if (V.yyy < 7) {
@@ -216,6 +219,9 @@ inline void Registers::clearVBlankStarted() { regs_[PPUSTATUS] &= ~BIT7; }
 
 inline uint8_t Registers::oamAddr() { return regs_[OAMADDR]; }
 inline uint8_t Registers::oamData() { return regs_[OAMDATA]; }
+
+inline uint8_t Registers::scrollX_fine() { return x; }
+inline uint8_t Registers::scrollX_coarse() { return scrollX() & 0b11111000; };
 
 inline uint8_t Registers::scrollX() {
   return ((V.NN & 0b1) * 256) + (V.XXXXX * 8) + x;
