@@ -129,11 +129,14 @@ void PPU::handleSprites() {
     clearOam();
   } else if (65 <= cycle_ && cycle_ <= 256) {
     evaluateSprites();
-  } else if (cycle_ == 260) {
-    fetchSprites_old();
   } else if (257 <= cycle_ && cycle_ <= 320) {
     // fetch sprites
-    // fetchSprites();
+    fetchSprites();
+  } else if (cycle_ == 321) {
+    // move sprites from the staging area ("latches") into the rendering area
+    // ("registers")
+    std::copy(std::begin(sprites_staging_), std::end(sprites_staging_),
+              std::begin(sprites_));
   }
 
   return;
@@ -190,23 +193,16 @@ void PPU::fetchSprites() {
   static uint8_t tile_idx;
   static uint8_t idx = 0;
 
-  uint8_t step = cycle_ & 0b111;
-  uint8_t m = step - 1;
+  if (cycle_ == 257) {
+    idx = 0;
+  }
 
   // unused slot
   if (secondary_oam_[4 * idx] >= 0xEF) {
-    idx = 0;
     return;
   }
 
-  // std::cout << +idx << ": " << std::bitset<3>(step) << std::endl;
-
-  if (cycle_ == 257) {
-    sprites_.fill({.v = 0});
-    std::copy(std::begin(sprites_staging_), std::end(sprites_staging_),
-              std::begin(sprites_));
-  }
-
+  uint8_t step = cycle_ & 0b111;
   switch (step) {
   case 0b001:
     sprite_y = secondary_oam_[4 * idx];
@@ -215,15 +211,15 @@ void PPU::fetchSprites() {
     tile_idx = secondary_oam_[4 * idx + 1];
     break;
   case 0b011:
-    sprites_[idx].s.attrs.v = secondary_oam_[4 * idx + 2];
+    sprites_staging_[idx].s.attrs.v = secondary_oam_[4 * idx + 2];
     break;
   case 0b100:
-    sprites_[idx].s.xpos = secondary_oam_[4 * idx + 3];
+    sprites_staging_[idx].s.xpos = secondary_oam_[4 * idx + 3];
     break;
   case 0b101:
   case 0b111: {
     int tile_y = scanline_ - sprite_y;
-    if (sprites_[idx].s.attrs.s.v_flip) {
+    if (sprites_staging_[idx].s.attrs.s.v_flip) {
       tile_y = registers_.spriteSize() - 1 - tile_y;
     }
     auto bank = registers_.spritePTableAddr(tile_idx);
@@ -239,20 +235,20 @@ void PPU::fetchSprites() {
       tile_y -= 8;
       tile_base += 16;
     }
-    auto &v =
-        (step == 0b101 ? sprites_[idx].s.tile_lo : sprites_[idx].s.tile_hi);
+    auto &v = (step == 0b101 ? sprites_staging_[idx].s.tile_lo
+                             : sprites_staging_[idx].s.tile_hi);
     uint8_t off = (step == 0b101 ? 0 : 8);
     v = readByte(tile_base + tile_y + off);
-    if (!sprites_[idx].s.attrs.s.h_flip) {
+    if (!sprites_staging_[idx].s.attrs.s.h_flip) {
       util::reverseByte(v);
     }
     break;
   }
   case 0b000:
     ++idx;
-    if (idx >= sprites_.size()) {
-      idx = 0;
-    }
+    // if (idx >= sprites_staging_.size()) {
+    //   idx = 0;
+    // }
     break;
   default:
     break;
@@ -405,9 +401,9 @@ void PPU::renderSpritePixel(int abs_x, int abs_y) {
       if (value > 0 && !filled) {
         if (Priority(sprite.s.attrs.s.priority) == Priority::FG || bg_zero_) {
           set_pixel(abs_x, abs_y, SystemPalette[palette[value]]);
+          // TODO(oren): should this be set outside the conditional block?
+          filled = true;
         }
-        // TODO(oren): should this be set inside the conditional block?
-        filled = true;
       }
     }
   }
