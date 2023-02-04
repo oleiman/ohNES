@@ -169,6 +169,7 @@ private:
 
   std::array<Sprite, 8> sprites_{};
   std::array<Sprite, 8> sprites_staging_{};
+  Sprite dummy_sprite_ = {.v = 0};
   uint8_t oam_n_ = 0;
   uint8_t oam_m_ = 0;
   uint8_t sec_oam_n_ = 0;

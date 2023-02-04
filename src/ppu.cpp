@@ -197,29 +197,29 @@ void PPU::fetchSprites() {
     idx = 0;
   }
 
-  // unused slot
-  if (secondary_oam_[4 * idx] >= 0xEF) {
-    return;
-  }
+  Sprite &sprite =
+      (secondary_oam_[4 * idx] >= 0xEF ? dummy_sprite_ : sprites_staging_[idx]);
 
   uint8_t step = cycle_ & 0b111;
   switch (step) {
   case 0b001:
+    readByte(registers_.spritePTableAddr(0));
     sprite_y = secondary_oam_[4 * idx];
     break;
   case 0b010:
     tile_idx = secondary_oam_[4 * idx + 1];
     break;
   case 0b011:
-    sprites_staging_[idx].s.attrs.v = secondary_oam_[4 * idx + 2];
+    readByte(registers_.spritePTableAddr(0));
+    sprite.s.attrs.v = secondary_oam_[4 * idx + 2];
     break;
   case 0b100:
-    sprites_staging_[idx].s.xpos = secondary_oam_[4 * idx + 3];
+    sprite.s.xpos = secondary_oam_[4 * idx + 3];
     break;
   case 0b101:
   case 0b111: {
     int tile_y = scanline_ - sprite_y;
-    if (sprites_staging_[idx].s.attrs.s.v_flip) {
+    if (sprite.s.attrs.s.v_flip) {
       tile_y = registers_.spriteSize() - 1 - tile_y;
     }
     auto bank = registers_.spritePTableAddr(tile_idx);
@@ -235,11 +235,10 @@ void PPU::fetchSprites() {
       tile_y -= 8;
       tile_base += 16;
     }
-    auto &v = (step == 0b101 ? sprites_staging_[idx].s.tile_lo
-                             : sprites_staging_[idx].s.tile_hi);
+    auto &v = (step == 0b101 ? sprite.s.tile_lo : sprite.s.tile_hi);
     uint8_t off = (step == 0b101 ? 0 : 8);
     v = readByte(tile_base + tile_y + off);
-    if (!sprites_staging_[idx].s.attrs.s.h_flip) {
+    if (!sprite.s.attrs.s.h_flip) {
       util::reverseByte(v);
     }
     break;
