@@ -73,6 +73,9 @@ public:
 
 private:
   void visibleLine();
+  void handleBackground();
+  void handleSprites();
+
   void vBlankLine();
   void set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb);
   std::array<uint8_t, 4> bgPalette();
@@ -80,7 +83,10 @@ private:
 
   void renderBgPixel(int abs_x, int abs_y);
   void renderSpritePixel(int abs_x, int abs_y);
+  void clearOam();
   void evaluateSprites();
+  void fetchSprites_old();
+  void fetchSprites();
 
   Scroll scrollType() { return Scroll(mapper_.mirroring()); }
 
@@ -162,6 +168,11 @@ private:
   bool szh_ = false;
 
   std::array<Sprite, 8> sprites_{};
+  std::array<Sprite, 8> sprites_staging_{};
+  uint8_t oam_n_ = 0;
+  uint8_t oam_m_ = 0;
+  uint8_t sec_oam_n_ = 0;
+  bool sec_oam_write_enable_ = false;
 
   static std::array<std::array<uint8_t, 3>, 64> SystemPalette;
   static std::unordered_map<Scroll, std::unordered_map<AddressT, AddressT>>

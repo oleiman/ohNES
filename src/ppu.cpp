@@ -83,6 +83,11 @@ void PPU::visibleLine() {
                              std::to_string(scanline_));
   }
 
+  handleBackground();
+  handleSprites();
+}
+
+void PPU::handleBackground() {
   // NOTE(oren): do nothing on cycle 0
   if (cycle_ >= 1 && cycle_ < 257) { // Data for current scanline
     int dot_x = cycle_ - 1;
@@ -92,24 +97,211 @@ void PPU::visibleLine() {
     if (registers_.showBackground()) {
       renderBgPixel(dot_x, dot_y);
     }
-
-    if (registers_.showSprites()) {
-      renderSpritePixel(dot_x, dot_y);
-    }
     backgroundSR_.Shift();
+
     if (cycle_ == 256) {
       registers_.incVertScroll();
     }
   } else if (cycle_ == 257) {
     registers_.syncScrollX();
-  } else if (cycle_ == 260) {
-    evaluateSprites();
   } else if (321 <= cycle_ && cycle_ <= 336) {
     LoadBackground();
     backgroundSR_.Shift();
   } else if (cycle_ == 337 || cycle_ == 339) {
     // garbage nametable reads (timing for mmc5?)
     fetchNametable();
+  }
+}
+
+void PPU::handleSprites() {
+
+  // rendering
+  if (1 <= cycle_ && cycle_ < 257) {
+    int dot_x = cycle_ - 1;
+    int dot_y = scanline_;
+    if (registers_.showSprites()) {
+      renderSpritePixel(dot_x, dot_y);
+    }
+  }
+
+  // evaluation
+  if (1 <= cycle_ && cycle_ <= 64) {
+    clearOam();
+  } else if (65 <= cycle_ && cycle_ <= 256) {
+    evaluateSprites();
+  } else if (cycle_ == 260) {
+    fetchSprites_old();
+  } else if (257 <= cycle_ && cycle_ <= 320) {
+    // fetch sprites
+    // fetchSprites();
+  }
+
+  return;
+}
+
+void PPU::clearOam() {
+  if (cycle_ % 2 == 1) {
+    secondary_oam_[cycle_ >> 1] = 0xFF;
+  }
+  if (cycle_ % 8 == 1) {
+    sprites_staging_[cycle_ >> 3].v = 0;
+  }
+  oam_n_ = 0;
+  oam_m_ = 0;
+  sec_oam_n_ = 0;
+  sec_oam_write_enable_ = true;
+}
+
+void PPU::evaluateSprites() {
+  auto y_coord = secondary_oam_[4 * sec_oam_n_];
+
+  // TODO(oren): refactor for sprite overflow
+  if (sec_oam_write_enable_) {
+    if (oam_m_ == 0) {
+      secondary_oam_[4 * sec_oam_n_] = oam_[4 * oam_n_];
+      oam_m_++;
+    } else if (y_coord <= scanline_ &&
+               scanline_ < (y_coord + registers_.spriteSize())) {
+      secondary_oam_[4 * sec_oam_n_ + oam_m_] = oam_[4 * oam_n_ + oam_m_];
+      sprites_staging_[sec_oam_n_].s.idx = oam_n_;
+      ++oam_m_;
+      if (oam_m_ == 4) {
+        sec_oam_n_++;
+        oam_n_++;
+        oam_m_ = 0;
+      }
+    } else {
+      // TODO(oren): actually supposed to leave this as the out of range y-coord
+      secondary_oam_[4 * sec_oam_n_] = 0xFF;
+      oam_n_++;
+      oam_m_ = 0;
+    }
+  } else if (oam_n_ < (oam_.size() >> 2)) {
+    oam_n_++;
+  }
+
+  if (sec_oam_n_ >= sprites_staging_.size() || oam_n_ >= (oam_.size() >> 2)) {
+    sec_oam_write_enable_ = false;
+  }
+}
+
+void PPU::fetchSprites() {
+  static uint8_t sprite_y;
+  static uint8_t tile_idx;
+  static uint8_t idx = 0;
+
+  uint8_t step = cycle_ & 0b111;
+  uint8_t m = step - 1;
+
+  // unused slot
+  if (secondary_oam_[4 * idx] >= 0xEF) {
+    idx = 0;
+    return;
+  }
+
+  // std::cout << +idx << ": " << std::bitset<3>(step) << std::endl;
+
+  if (cycle_ == 257) {
+    sprites_.fill({.v = 0});
+    std::copy(std::begin(sprites_staging_), std::end(sprites_staging_),
+              std::begin(sprites_));
+  }
+
+  switch (step) {
+  case 0b001:
+    sprite_y = secondary_oam_[4 * idx];
+    break;
+  case 0b010:
+    tile_idx = secondary_oam_[4 * idx + 1];
+    break;
+  case 0b011:
+    sprites_[idx].s.attrs.v = secondary_oam_[4 * idx + 2];
+    break;
+  case 0b100:
+    sprites_[idx].s.xpos = secondary_oam_[4 * idx + 3];
+    break;
+  case 0b101:
+  case 0b111: {
+    int tile_y = scanline_ - sprite_y;
+    if (sprites_[idx].s.attrs.s.v_flip) {
+      tile_y = registers_.spriteSize() - 1 - tile_y;
+    }
+    auto bank = registers_.spritePTableAddr(tile_idx);
+    auto tmp_idx = tile_idx;
+    if (registers_.spriteSize() == 16) {
+      tmp_idx &= 0xFE;
+    }
+    auto tile_base = bank + (tmp_idx * 16);
+    // NOTE(oren): If we're looking at the bottom half of an 8x16 sprite,
+    // skip to the next tile (top/bottom halves are arranged consecutively
+    // in pattern table RAM)
+    if (tile_y >= 8) {
+      tile_y -= 8;
+      tile_base += 16;
+    }
+    auto &v =
+        (step == 0b101 ? sprites_[idx].s.tile_lo : sprites_[idx].s.tile_hi);
+    uint8_t off = (step == 0b101 ? 0 : 8);
+    v = readByte(tile_base + tile_y + off);
+    if (!sprites_[idx].s.attrs.s.h_flip) {
+      util::reverseByte(v);
+    }
+    break;
+  }
+  case 0b000:
+    ++idx;
+    if (idx >= sprites_.size()) {
+      idx = 0;
+    }
+    break;
+  default:
+    break;
+  }
+}
+
+void PPU::fetchSprites_old() {
+  std::copy(std::begin(sprites_staging_), std::end(sprites_staging_),
+            std::begin(sprites_));
+
+  // TODO(oren): whole range 0xEF - 0xFF is off limits
+  for (int i = 0; i < secondary_oam_.size(); i += 4) {
+    // pretty sure setting byte 0 to EF from program code just means
+    // sprite_y will never sit on a visible scanline, so this check may
+    // not actually be necessary
+    if (secondary_oam_[i] >= 0xEF) {
+      break;
+    }
+    Sprite sprite = {.v = 0};
+    uint8_t sprite_y = secondary_oam_[i];
+    uint8_t tile_idx = secondary_oam_[i + 1];
+    sprite.s.attrs.v = secondary_oam_[i + 2];
+    sprite.s.xpos = secondary_oam_[i + 3];
+
+    int tile_y = scanline_ - sprite_y;
+    if (sprite.s.attrs.s.v_flip) {
+      tile_y = registers_.spriteSize() - 1 - tile_y;
+    }
+
+    auto bank = registers_.spritePTableAddr(tile_idx);
+    if (registers_.spriteSize() == 16) {
+      tile_idx &= 0xFE;
+    }
+
+    auto tile_base = bank + (tile_idx * 16);
+    // NOTE(oren): If we're looking at the bottom half of an 8x16 sprite,
+    // skip to the next tile (top/bottom halves are arraned consecutively
+    // in pattern table RAM)
+    if (tile_y >= 8) {
+      tile_y -= 8;
+      tile_base += 16;
+    }
+    sprite.s.tile_lo = readByte(tile_base + tile_y);
+    sprite.s.tile_hi = readByte(tile_base + tile_y + 8);
+    if (!sprite.s.attrs.s.h_flip) {
+      util::reverseByte(sprite.s.tile_lo);
+      util::reverseByte(sprite.s.tile_hi);
+    }
+    sprites_[i >> 2].v |= sprite.v;
   }
 }
 
@@ -218,68 +410,6 @@ void PPU::renderSpritePixel(int abs_x, int abs_y) {
         filled = true;
       }
     }
-  }
-}
-
-void PPU::evaluateSprites() {
-  // TODO(oren): some tricks might depend on spreading this out over the
-  // correct cycles
-  // NOTE(oren): sprites are delayed by one scanline, so we use
-  // the _previous_ scanline index to check against each sprite's y index
-  secondary_oam_.fill(0xFF);
-  sprites_.fill({.v = 0});
-
-  for (int n1 = 0, n2 = 0; n1 < oam_.size() && n2 < secondary_oam_.size();
-       n1 += 4) {
-    if (scanline_ >= oam_[n1] &&
-        scanline_ < (oam_[n1] + registers_.spriteSize())) {
-      std::copy(std::begin(oam_) + n1, std::begin(oam_) + n1 + 4,
-                std::begin(secondary_oam_) + n2);
-      sprites_[n2 >> 2].s.idx = n1 >> 2;
-
-      n2 += 4;
-    }
-  }
-
-  // TODO(oren): whole range 0xEF - 0xFF is off limits
-  for (int i = 0; i < secondary_oam_.size(); i += 4) {
-    // pretty sure setting byte 0 to EF from program code just means
-    // sprite_y will never sit on a visible scanline, so this check may
-    // not actually be necessary
-    if (secondary_oam_[i] >= 0xEF) {
-      break;
-    }
-    Sprite sprite = {.v = 0};
-    uint8_t sprite_y = secondary_oam_[i];
-    uint8_t tile_idx = secondary_oam_[i + 1];
-    sprite.s.attrs.v = secondary_oam_[i + 2];
-    sprite.s.xpos = secondary_oam_[i + 3];
-
-    int tile_y = scanline_ - sprite_y;
-    if (sprite.s.attrs.s.v_flip) {
-      tile_y = registers_.spriteSize() - 1 - tile_y;
-    }
-
-    auto bank = registers_.spritePTableAddr(tile_idx);
-    if (registers_.spriteSize() == 16) {
-      tile_idx &= 0xFE;
-    }
-
-    auto tile_base = bank + (tile_idx * 16);
-    // NOTE(oren): If we're looking at the bottom half of an 8x16 sprite,
-    // skip to the next tile (top/bottom halves are arraned consecutively
-    // in pattern table RAM)
-    if (tile_y >= 8) {
-      tile_y -= 8;
-      tile_base += 16;
-    }
-    sprite.s.tile_lo = readByte(tile_base + tile_y);
-    sprite.s.tile_hi = readByte(tile_base + tile_y + 8);
-    if (!sprite.s.attrs.s.h_flip) {
-      util::reverseByte(sprite.s.tile_lo);
-      util::reverseByte(sprite.s.tile_hi);
-    }
-    sprites_[i >> 2].v |= sprite.v;
   }
 }
 
