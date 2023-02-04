@@ -383,8 +383,6 @@ void PPU::renderSpritePixel(int abs_x, int abs_y) {
   // but also that all sprites have their x positions advanced as appropriate.
   bool filled = false;
   for (auto &sprite : sprites_) {
-    if (sprite.s.xpos == 0)
-      break;
     auto palette = spritePalette(sprite.s.attrs.s.palette_i);
     if (abs_x == sprite.s.xpos && (sprite.s.tile_lo || sprite.s.tile_hi)) {
       uint16_t value =
