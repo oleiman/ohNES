@@ -101,8 +101,9 @@ public:
   }
 
   void ppu_write(AddressT addr, DataT data) override {
-    // setPpuABus(addr);
+
     if (addr < 0x2000 && cart_.chrRamSize) {
+      // setPpuABus(addr);
       static_cast<Derived *>(this)->chrWrite(addr, data);
     } else if (addr < 0x3F00) {
       addr = mirror_vram_addr(addr, static_cast<Derived *>(this)->mirroring());
@@ -117,8 +118,8 @@ public:
   }
 
   DataT ppu_read(AddressT addr) override {
-    // setPpuABus(addr);
     if (addr < 0x2000) {
+      // setPpuABus(addr);
       return static_cast<Derived *>(this)->chrRead(addr);
     } else if (addr < 0x3F00) {
       addr = mirror_vram_addr(addr, static_cast<Derived *>(this)->mirroring());
@@ -132,6 +133,7 @@ protected:
   void oamDma(AddressT base) {
     uint8_t oam_base = ppu_reg_.oamAddr();
     for (int i = 0; i < ppu_oam_.size(); ++i) {
+      assert(oam_base + i < ppu_oam_.size());
       ppu_oam_[oam_base + i] = internal_[base | i];
     }
     ppu_reg_.signalOamDma();

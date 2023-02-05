@@ -64,37 +64,46 @@ void PPU::step(uint16_t cycles, bool &nmi) {
   }
 }
 
-void PPU::visibleLine() {
+void PPU::visibleLine(bool pre_render) {
 
   // NOTE(oren): this would indicate either:
   //    a) a timing bug in the emulation (PPU or CPU) or
   //    b) a software bug in the game
-  if (registers_.writePending()) {
-    std::cout << "S: " << +scanline_ << ", C: " << +cycle_
-              << ", Addr: " << std::hex << registers_.vRamAddr() << std::dec
-              << std::endl;
-    throw std::runtime_error("CPU writing during non-VBLANK line " +
-                             std::to_string(scanline_));
-  } else if (registers_.readPending()) {
-    std::cout << "S: " << +scanline_ << ", C: " << +cycle_
-              << ", Addr: " << std::hex << registers_.vRamAddr() << std::dec
-              << std::endl;
-    throw std::runtime_error("CPU reading during non-VBLANK line " +
-                             std::to_string(scanline_));
+
+  // TODO(oren): I still think these shouldn't be hitting in SMB3
+  // likely I'm simply not monitoring the address bus property (16-pix sprites)
+  if (registers_.writePending() && !pre_render) {
+    registers_.clearWritePending();
+    registers_.incHorizScroll();
+    registers_.incVertScroll();
+    // std::cout << "S: " << +scanline_ << ", C: " << +cycle_
+    //           << ", Addr: " << std::hex << registers_.vRamAddr() << std::dec
+    //           << std::endl;
+    // throw std::runtime_error("CPU writing during non-VBLANK line " +
+    //                          std::to_string(scanline_));
+  } else if (registers_.readPending() && !pre_render) {
+    registers_.clearReadPending();
+    registers_.incHorizScroll();
+    registers_.incVertScroll();
+    // std::cout << "S: " << +scanline_ << ", C: " << +cycle_
+    //           << ", Addr: " << std::hex << registers_.vRamAddr() << std::dec
+    //           << std::endl;
+    // throw std::runtime_error("CPU reading during non-VBLANK line " +
+    //                          std::to_string(scanline_));
   }
 
-  handleBackground();
-  handleSprites();
+  handleBackground(pre_render);
+  handleSprites(pre_render);
 }
 
-void PPU::handleBackground() {
+void PPU::handleBackground(bool pre_render) {
   // NOTE(oren): do nothing on cycle 0
-  if (cycle_ >= 1 && cycle_ < 257) { // Data for current scanline
+  if (1 <= cycle_ && cycle_ <= 256) { // Data for current scanline
     int dot_x = cycle_ - 1;
     int dot_y = scanline_;
 
     LoadBackground();
-    if (registers_.showBackground()) {
+    if (registers_.showBackground() && !pre_render) {
       renderBgPixel(dot_x, dot_y);
     }
     backgroundSR_.Shift();
@@ -113,13 +122,13 @@ void PPU::handleBackground() {
   }
 }
 
-void PPU::handleSprites() {
+void PPU::handleSprites(bool pre_render) {
 
   // rendering
   if (1 <= cycle_ && cycle_ < 257) {
     int dot_x = cycle_ - 1;
     int dot_y = scanline_;
-    if (registers_.showSprites()) {
+    if (registers_.showSprites() && !pre_render) {
       renderSpritePixel(dot_x, dot_y);
     }
   }
@@ -132,9 +141,13 @@ void PPU::handleSprites() {
   } else if (257 <= cycle_ && cycle_ <= 320) {
     // fetch sprites
     fetchSprites();
+    if (cycle_ == 260) {
+      mapper_.setPpuABus(0x1000);
+    }
   } else if (cycle_ == 321) {
     // move sprites from the staging area ("latches") into the rendering area
     // ("registers")
+    mapper_.setPpuABus(0x0000);
     std::copy(std::begin(sprites_staging_), std::end(sprites_staging_),
               std::begin(sprites_));
   }
@@ -144,6 +157,7 @@ void PPU::handleSprites() {
 
 void PPU::clearOam() {
   if (cycle_ % 2 == 1) {
+    assert((cycle_ >> 1) < secondary_oam_.size());
     secondary_oam_[cycle_ >> 1] = 0xFF;
   }
   if (cycle_ % 8 == 1) {
@@ -161,10 +175,12 @@ void PPU::evaluateSprites() {
   // TODO(oren): refactor for sprite overflow
   if (sec_oam_write_enable_) {
     if (oam_m_ == 0) {
+      assert(4 * sec_oam_n_ < secondary_oam_.size());
       secondary_oam_[4 * sec_oam_n_] = oam_[4 * oam_n_];
       oam_m_++;
     } else if (y_coord <= scanline_ &&
                scanline_ < (y_coord + registers_.spriteSize())) {
+      assert(4 * sec_oam_n_ + oam_m_ < secondary_oam_.size());
       secondary_oam_[4 * sec_oam_n_ + oam_m_] = oam_[4 * oam_n_ + oam_m_];
       sprites_staging_[sec_oam_n_].s.idx = oam_n_;
       ++oam_m_;
@@ -175,6 +191,7 @@ void PPU::evaluateSprites() {
       }
     } else {
       // TODO(oren): actually supposed to leave this as the out of range y-coord
+      assert(4 * sec_oam_n_ < secondary_oam_.size());
       secondary_oam_[4 * sec_oam_n_] = 0xFF;
       oam_n_++;
       oam_m_ = 0;
@@ -193,12 +210,14 @@ void PPU::fetchSprites() {
   static uint8_t tile_idx;
   static uint8_t idx = 0;
 
-  if (cycle_ == 257) {
+  // HACK(oren): seems like we miss cycles occasionally
+  // I've noticed this in the switch stmt below as well...not sure why
+  if (cycle_ < 264) {
     idx = 0;
   }
 
-  Sprite &sprite =
-      (secondary_oam_[4 * idx] >= 0xEF ? dummy_sprite_ : sprites_staging_[idx]);
+  bool dummy = secondary_oam_[4 * idx] >= 0xEF;
+  Sprite &sprite = (dummy ? dummy_sprite_ : sprites_staging_[idx]);
 
   uint8_t step = cycle_ & 0b111;
   switch (step) {
@@ -244,10 +263,12 @@ void PPU::fetchSprites() {
     break;
   }
   case 0b000:
-    ++idx;
-    // if (idx >= sprites_staging_.size()) {
-    //   idx = 0;
-    // }
+    if (!dummy) {
+      ++idx;
+    }
+    if (idx >= sprites_staging_.size() && cycle_ < 320) {
+      idx = sprites_staging_.size() - 1;
+    }
     break;
   default:
     break;
@@ -399,8 +420,8 @@ void PPU::renderSpritePixel(int abs_x, int abs_y) {
         if (Priority(sprite.s.attrs.s.priority) == Priority::FG || bg_zero_) {
           set_pixel(abs_x, abs_y, SystemPalette[palette[value]]);
           // TODO(oren): should this be set outside the conditional block?
-          filled = true;
         }
+        filled = true;
       }
     }
   }

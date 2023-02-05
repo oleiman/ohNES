@@ -133,6 +133,8 @@ public:
   void putData(uint8_t);
   bool writePending();
   bool readPending();
+  void clearReadPending() { read_pending_ = false; }
+  void clearWritePending() { write_pending_ = false; }
   bool handleNmi();
 
   void signalOamDma();

@@ -15,6 +15,7 @@ namespace mapper {
 void MMC1::cartWrite(AddressT addr, DataT data) {
   if (addr < 0x8000) {
     if (prgRamEnabled()) {
+      assert((addr & PRG_RAM_MASK) < cart_.prgRamSize);
       cart_.prgRam[addr & PRG_RAM_MASK] = data;
     }
   } else if (data & 0b10000000) {
@@ -88,6 +89,7 @@ MMC1::DataT MMC1::cartRead(AddressT addr) {
     assert(false);
   }
 
+  assert(bank + offset < cart_.prgRomSize);
   return cart_.prgRom[bank + offset];
 }
 
@@ -104,6 +106,7 @@ void MMC1::chrWrite(AddressT addr, DataT data) {
     } else {
       bank = CHR_BANK_SIZE * (chrBankSelect_[1] & 0b1);
     }
+    assert(bank + offset < cart_.chrRamSize);
     cart_.chrRam[bank + offset] = data;
   } else {
     assert(false);
@@ -123,6 +126,7 @@ MMC1::DataT MMC1::chrRead(AddressT addr) {
     } else {
       bank = CHR_BANK_SIZE * (chrBankSelect_[1] & 0b1);
     }
+    assert(bank + offset < cart_.chrRamSize);
     return cart_.chrRam[bank + offset];
   } else {
     if (chrMode() == 0) {

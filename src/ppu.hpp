@@ -72,9 +72,9 @@ public:
   void showPatternTable();
 
 private:
-  void visibleLine();
-  void handleBackground();
-  void handleSprites();
+  void visibleLine(bool pre_render = false);
+  void handleBackground(bool pre_render);
+  void handleSprites(bool pre_render);
 
   void vBlankLine();
   void set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb);
@@ -176,8 +176,6 @@ private:
   bool sec_oam_write_enable_ = false;
 
   static std::array<std::array<uint8_t, 3>, 64> SystemPalette;
-  static std::unordered_map<Scroll, std::unordered_map<AddressT, AddressT>>
-      SecondaryNTMap;
 
   friend void LoadSystemPalette(const std::string &fname);
 };
