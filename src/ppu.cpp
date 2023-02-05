@@ -390,11 +390,15 @@ void PPU::fetchPattern(PTOff plane) {
 }
 
 void PPU::renderBgPixel(int abs_x, int abs_y) {
+  bool in_left_8 = 0 <= abs_x && abs_x < 8;
   uint8_t fine_x = registers_.scrollX_fine();
   auto palette = bgPalette();
   auto lower = backgroundSR_.pattern_lo.value >> fine_x;
   auto upper = backgroundSR_.pattern_hi.value >> fine_x;
   auto value = ((upper & 0x01) << 1) | (lower & 0x01);
+  if (in_left_8 && !registers_.showBackgroundLeft8()) {
+    value = 0;
+  }
   bg_zero_ = (value == 0);
   set_pixel(abs_x, abs_y, SystemPalette[palette[value]]);
 }
@@ -402,12 +406,16 @@ void PPU::renderBgPixel(int abs_x, int abs_y) {
 void PPU::renderSpritePixel(int abs_x, int abs_y) {
   // NOTE(oren): ensure that the first opaque sprite pixel takes priority
   // but also that all sprites have their x positions advanced as appropriate.
+  bool in_left_8 = 0 <= abs_x && abs_x < 8;
   bool filled = false;
   for (auto &sprite : sprites_) {
     auto palette = spritePalette(sprite.s.attrs.s.palette_i);
     if (abs_x == sprite.s.xpos && (sprite.s.tile_lo || sprite.s.tile_hi)) {
       uint16_t value =
           ((sprite.s.tile_hi & 0x01) << 1) | (sprite.s.tile_lo & 0x01);
+      if (in_left_8 && !registers_.showSpritesLeft8()) {
+        value = 0;
+      }
       sprite.s.tile_lo >>= 1;
       sprite.s.tile_hi >>= 1;
       ++sprite.s.xpos;
