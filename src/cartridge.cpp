@@ -59,7 +59,7 @@ Cartridge::Cartridge(std::string_view const &romfile) {
   prgRom = vector<uint8_t>(it, it + prgRomSize);
   it += prgRom.size();
   if (chrRamSize) {
-    chrRam = vector<uint8_t>(it, it + chrRamSize);
+    chrRam = vector<uint8_t>(chrRamSize, 0);
     it += chrRam.size();
   } else {
     chrRom = vector<uint8_t>(it, it + chrRomSize);
