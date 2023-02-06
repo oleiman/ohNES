@@ -5,11 +5,16 @@
 #include <cstdint>
 #include <iostream>
 
+namespace mapper {
+class NESMapper;
+}
+
 // TODO(oren): Split this up. `Registers` is acting as both access point for PPU
 // Registers *AND* a signalling medium between the CPU memory mapper and the
 // PPU. If you squint, this is the same thing, but I'd like to tease some of
 // that functionality apart. TBD.
 namespace vid {
+
 class Registers {
   static constexpr uint8_t BIT0 = 0b00000001;
   static constexpr uint8_t BIT1 = 0b00000010;
@@ -35,8 +40,8 @@ public:
 
   // Registers() { regs_[PPUCTRL] = 0x80; }
 
-  void write(CName r, uint8_t val);
-  uint8_t read(CName r);
+  void write(CName r, uint8_t val, mapper::NESMapper &);
+  uint8_t read(CName r, mapper::NESMapper &);
 
   /*** PPUCTRL Accessors ***/
   uint16_t baseNametableAddr();
@@ -228,6 +233,8 @@ inline uint8_t Registers::scrollX_coarse() { return scrollX() & 0b11111000; };
 inline uint8_t Registers::scrollX() {
   return ((V.NN & 0b1) * 256) + (V.XXXXX * 8) + x;
 }
+
+inline uint8_t Registers::scrollY_fine() { return scrollY() & 0b111; }
 inline uint8_t Registers::scrollY() {
   return (((V.NN >> 1) & 0b1) * 256) + (V.YYYYY * 8) + V.yyy;
 }

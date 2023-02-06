@@ -73,7 +73,6 @@ MMC3::DataT MMC3::cartRead(AddressT addr) {
 }
 
 void MMC3::chrWrite(AddressT addr, DataT data) {
-  // setPpuABus(addr);
   assert(cart_.chrRamSize);
   const AddressT bank_size = 0x400;
   AddressT offset = addr & (bank_size - 1);
@@ -111,13 +110,12 @@ void MMC3::chrWrite(AddressT addr, DataT data) {
       bank = bankConfig_[5] * bank_size;
     }
   }
-
+  // setPpuABus(bank + offset);
   cart_.chrRam[bank + offset] = data;
 }
 
 // 0x400 is the chr bank size for the purposes of indexing (incl for 2kb banks)
 MMC3::DataT MMC3::chrRead(AddressT addr) {
-  // setPpuABus(addr);
   const AddressT bank_size = 0x400;
   AddressT offset = addr & (bank_size - 1);
   uint32_t bank = 0;
@@ -154,12 +152,23 @@ MMC3::DataT MMC3::chrRead(AddressT addr) {
       bank = bankConfig_[5] * bank_size;
     }
   }
-
+  // setPpuABus(bank + offset);
   if (cart_.chrRamSize) {
     return cart_.chrRam[bank + offset];
   } else {
     return cart_.chrRom[bank + offset];
   }
+}
+
+void MMC3::irqEnable(bool e) {
+  // if interrupts are on and we're turning them off,
+  // acknowledge whatever is pending
+  if (irqEnabled_ && !e) {
+    // TODO(oren): acknowledge pending interrupts
+    pending_irq_ = false;
+    console_.irqPin() = false;
+  }
+  irqEnabled_ = e;
 }
 
 bool MMC3::genIrq() {
@@ -178,8 +187,16 @@ bool MMC3::setPpuABus(AddressT val) {
   ppuABus_ = val;
 
   // only do the thing on a falling edge on bit 12 (0 -> 1)
+  // unsigned long long time_since_change = 0;
+  // if (prev != next) {
+  //   if (a12_state_.timer > 0)
+  //     time_since_change = m2_count_ - a12_state_.timer;
+  //   a12_state_.state = (next ? A12_STATE::HIGH : A12_STATE::LOW);
+  //   a12_state_.timer = m2_count_;
+  // }
 
-  if (!prev && next) {
+  if (!prev && next // && time_since_change >= 1
+  ) {
     if (irqCounter_.reload(irqLatchVal_)) {
       return false;
     }

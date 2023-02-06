@@ -25,6 +25,7 @@ public:
   virtual DataT ppu_read(AddressT) = 0;
   virtual uint8_t mirroring(void) const = 0;
   virtual bool setPpuABus(AddressT) = 0;
+  virtual void tick(uint16_t) = 0;
 };
 
 template <class Derived> class NESMapperBase : public NESMapper {
@@ -55,6 +56,8 @@ public:
 
   virtual bool setPpuABus(AddressT) override { return false; }
 
+  virtual void tick(uint16_t c) override { m2_count_ += c; }
+
   constexpr static size_t size = 1ul << (sizeof(AddressT) * 8);
 
   // TODO(oren): magic numbers
@@ -62,7 +65,7 @@ public:
     if (addr < 0x2000) {
       internal_[addr & 0x7FF] = data;
     } else if (addr < 0x4000) {
-      ppu_reg_.write(CName(addr & 0x07), data);
+      ppu_reg_.write(CName(addr & 0x07), data, *this);
     } else if (addr == 0x4014) {
       oamDma(static_cast<AddressT>(data) << 8);
     } else if (addr == 0x4016) {
@@ -82,7 +85,7 @@ public:
     if (addr < 0x2000) {
       return internal_[addr & 0x7FF];
     } else if (addr < 0x4000) {
-      return ppu_reg_.read(CName(addr & 0x07));
+      return ppu_reg_.read(CName(addr & 0x07), *this);
     } else if (addr == 0x4016) {
       return joypad_.readNext();
     } else if (addr == 0x4017) {
@@ -101,11 +104,11 @@ public:
   }
 
   void ppu_write(AddressT addr, DataT data) override {
-
     if (addr < 0x2000 && cart_.chrRamSize) {
       // setPpuABus(addr);
       static_cast<Derived *>(this)->chrWrite(addr, data);
     } else if (addr < 0x3F00) {
+      // setPpuABus(addr);
       addr = mirror_vram_addr(addr, static_cast<Derived *>(this)->mirroring());
       nametable_[addr] = data;
     } else {
@@ -119,9 +122,10 @@ public:
 
   DataT ppu_read(AddressT addr) override {
     if (addr < 0x2000) {
-      // setPpuABus(addr);
+      setPpuABus(addr);
       return static_cast<Derived *>(this)->chrRead(addr);
     } else if (addr < 0x3F00) {
+      // setPpuABus(addr);
       addr = mirror_vram_addr(addr, static_cast<Derived *>(this)->mirroring());
       return nametable_[addr];
     } else {
@@ -130,6 +134,8 @@ public:
   }
 
 protected:
+  unsigned long long m2_count_ = 0;
+
   void oamDma(AddressT base) {
     uint8_t oam_base = ppu_reg_.oamAddr();
     for (int i = 0; i < ppu_oam_.size(); ++i) {

@@ -63,15 +63,17 @@ private:
 
   bool irqEnabled_ = false;
   bool pending_irq_ = false;
-  void irqEnable(bool e) {
-    // if interrupts are on and we're turning them off,
-    // acknowledge whatever is pending
-    if (irqEnabled_ && !e) {
-      // TODO(oren): acknowledge pending interrupts
-      pending_irq_ = false;
-    }
-    irqEnabled_ = e;
-  }
+
+  enum class A12_STATE {
+    LOW,
+    HIGH,
+  };
+
+  struct {
+    A12_STATE state = A12_STATE::LOW;
+    unsigned long long timer = 0;
+  } a12_state_ = {};
+  void irqEnable(bool e);
 
   // TODO(oren): may want to remove for mmc6 compatibility
   bool prgRamEnabled() const {

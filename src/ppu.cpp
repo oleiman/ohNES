@@ -30,6 +30,10 @@ void PPU::step(uint16_t cycles, bool &nmi) {
   }
   cycles += registers_.oamCycles();
   while (cycles-- > 0) {
+    if (cycles % 3 == 2) {
+      mapper_.tick(1);
+    }
+
     if (cycle_ == 1 && scanline_ == 241) {
       if (registers_.vBlankNMI()) {
         nmi = true;
@@ -66,30 +70,16 @@ void PPU::step(uint16_t cycles, bool &nmi) {
 
 void PPU::visibleLine(bool pre_render) {
 
-  // NOTE(oren): this would indicate either:
-  //    a) a timing bug in the emulation (PPU or CPU) or
-  //    b) a software bug in the game
-
   // TODO(oren): I still think these shouldn't be hitting in SMB3
   // likely I'm simply not monitoring the address bus property (16-pix sprites)
   if (registers_.writePending() && !pre_render) {
     registers_.clearWritePending();
     registers_.incHorizScroll();
     registers_.incVertScroll();
-    // std::cout << "S: " << +scanline_ << ", C: " << +cycle_
-    //           << ", Addr: " << std::hex << registers_.vRamAddr() << std::dec
-    //           << std::endl;
-    // throw std::runtime_error("CPU writing during non-VBLANK line " +
-    //                          std::to_string(scanline_));
   } else if (registers_.readPending() && !pre_render) {
     registers_.clearReadPending();
     registers_.incHorizScroll();
     registers_.incVertScroll();
-    // std::cout << "S: " << +scanline_ << ", C: " << +cycle_
-    //           << ", Addr: " << std::hex << registers_.vRamAddr() << std::dec
-    //           << std::endl;
-    // throw std::runtime_error("CPU reading during non-VBLANK line " +
-    //                          std::to_string(scanline_));
   }
 
   handleBackground(pre_render);
@@ -142,12 +132,13 @@ void PPU::handleSprites(bool pre_render) {
     // fetch sprites
     fetchSprites();
     if (cycle_ == 260) {
-      mapper_.setPpuABus(0x1000);
+      // if (mapper_.setPpuABus(0x1000)) {
+      // }
     }
-  } else if (cycle_ == 321) {
+  } else if (cycle_ == 324) {
     // move sprites from the staging area ("latches") into the rendering area
     // ("registers")
-    mapper_.setPpuABus(0x0000);
+    // mapper_.setPpuABus(0x0000);
     std::copy(std::begin(sprites_staging_), std::end(sprites_staging_),
               std::begin(sprites_));
   }
@@ -222,14 +213,14 @@ void PPU::fetchSprites() {
   uint8_t step = cycle_ & 0b111;
   switch (step) {
   case 0b001:
-    readByte(registers_.spritePTableAddr(0));
+    readByte(registers_.spritePTableAddr(1));
     sprite_y = secondary_oam_[4 * idx];
     break;
   case 0b010:
     tile_idx = secondary_oam_[4 * idx + 1];
     break;
   case 0b011:
-    readByte(registers_.spritePTableAddr(0));
+    readByte(registers_.spritePTableAddr(1));
     sprite.s.attrs.v = secondary_oam_[4 * idx + 2];
     break;
   case 0b100:
@@ -373,10 +364,10 @@ void PPU::fetchAttribute() {
 }
 
 void PPU::fetchPattern(PTOff plane) {
-  uint8_t pixel_y = registers_.scrollY();
-  int y = pixel_y % 8;
+  uint8_t y = registers_.scrollY_fine();
   auto tile = static_cast<uint16_t>(nametable_reg);
   auto tile_base = registers_.backgroundPTableAddr() + tile * 16;
+
   auto val = readByte(tile_base + y + static_cast<uint16_t>(plane));
   util::reverseByte(val);
   switch (plane) {

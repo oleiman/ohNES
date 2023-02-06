@@ -1,4 +1,5 @@
 #include "ppu_registers.hpp"
+#include "mappers/base_mapper.hpp"
 
 #include <iostream>
 
@@ -6,7 +7,7 @@ using std::array;
 using std::to_string;
 
 namespace vid {
-void Registers::write(CName r, uint8_t val) {
+void Registers::write(CName r, uint8_t val, mapper::NESMapper &mapper) {
   // store lower 5 bits of data  in the status register
   regs_[PPUSTATUS] &= (0b11100000 | (val & 0b00011111));
   // also store the write value to the i/o latch
@@ -36,12 +37,14 @@ void Registers::write(CName r, uint8_t val) {
       // NOTE(oren): lowerpp 6 bits
       vram_addr_ |= (val & 0x3F);
       vram_addr_ <<= 8;
-      T.yyy = (val >> 5) & 0b11;
-      T.NN = (val >> 3) & 0b11;
+      mapper.setPpuABus(vram_addr_);
+      T.yyy = (val >> 4) & 0b11;
+      T.NN = (val >> 2) & 0b11;
       T.YYYYY &= 0b111;
       T.YYYYY |= (val & 0b11) << 3;
     } else {
       vram_addr_ |= val;
+      mapper.setPpuABus(vram_addr_);
       T.YYYYY &= (0b11000);
       T.YYYYY |= (val >> 5) & 0b111;
       T.XXXXX = val & 0b11111;
@@ -64,7 +67,7 @@ void Registers::write(CName r, uint8_t val) {
 
 } // namespace ppu
 
-uint8_t Registers::read(CName r) {
+uint8_t Registers::read(CName r, mapper::NESMapper &mapper) {
   if (!Readable[r]) {
     return io_latch_;
   }
