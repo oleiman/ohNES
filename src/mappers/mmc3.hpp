@@ -42,6 +42,7 @@ private:
 
   uint8_t prgMapMode() const { return (prgBankSelect >> 6) & 0b1; }
   uint8_t chrMapMode() const { return (prgBankSelect >> 7) & 0b1; }
+  void tick(uint16_t c) override;
 
   struct {
     uint8_t val = 0;

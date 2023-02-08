@@ -30,10 +30,6 @@ void PPU::step(uint16_t cycles, bool &nmi) {
   }
   cycles += registers_.oamCycles();
   while (cycles-- > 0) {
-    if (cycles % 3 == 2) {
-      mapper_.tick(1);
-    }
-
     if (cycle_ == 1 && scanline_ == 241) {
       if (registers_.vBlankNMI()) {
         nmi = true;
@@ -64,6 +60,7 @@ void PPU::step(uint16_t cycles, bool &nmi) {
         registers_.syncScrollY();
       }
     }
+
     tick();
   }
 }

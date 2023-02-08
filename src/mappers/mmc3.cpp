@@ -164,15 +164,19 @@ void MMC3::irqEnable(bool e) {
   // if interrupts are on and we're turning them off,
   // acknowledge whatever is pending
   if (irqEnabled_ && !e) {
-    // TODO(oren): acknowledge pending interrupts
+    // std::cout << +console_.currScanline() << ": " << +console_.currPpuCycle()
+    //           << " deassert IRQ" << std::endl;
     pending_irq_ = false;
     console_.irqPin() = false;
   }
+
   irqEnabled_ = e;
 }
 
 bool MMC3::genIrq() {
   if (!pending_irq_) {
+    // std::cout << +console_.currScanline() << ": " << +console_.currPpuCycle()
+    //           << " assert IRQ" << std::endl;
     console_.irqPin() = true;
     pending_irq_ = true;
     return true;
@@ -180,32 +184,38 @@ bool MMC3::genIrq() {
   return false;
 }
 
-// HACK(oren): LOL
+void MMC3::tick(uint16_t c) {
+  m2_count_ += c;
+  if (a12_state_.timer == 0) {
+    return;
+  }
+
+  unsigned long long time_since_change = m2_count_ - a12_state_.timer;
+
+  if (a12_state_.state == A12_STATE::HIGH && time_since_change == 3) {
+    // stop the timer
+    a12_state_.timer = 0;
+    if (irqCounter_.reload(irqLatchVal_)) {
+      return;
+    }
+
+    irqCounter_.val--;
+    if (irqCounter_.val == 0 && irqEnabled_) {
+      genIrq();
+    }
+  }
+}
+
 bool MMC3::setPpuABus(AddressT val) {
   bool prev = (ppuABus_ & 0x1000);
   bool next = (val & 0x1000);
   ppuABus_ = val;
 
-  // only do the thing on a falling edge on bit 12 (0 -> 1)
-  // unsigned long long time_since_change = 0;
-  // if (prev != next) {
-  //   if (a12_state_.timer > 0)
-  //     time_since_change = m2_count_ - a12_state_.timer;
-  //   a12_state_.state = (next ? A12_STATE::HIGH : A12_STATE::LOW);
-  //   a12_state_.timer = m2_count_;
-  // }
-
-  if (!prev && next // && time_since_change >= 1
-  ) {
-    if (irqCounter_.reload(irqLatchVal_)) {
-      return false;
-    }
-
-    irqCounter_.val--;
-    if (irqCounter_.val == 0 && irqEnabled_) {
-      return genIrq();
-    }
+  if (prev != next) {
+    a12_state_.state = (next ? A12_STATE::HIGH : A12_STATE::LOW);
+    a12_state_.timer = m2_count_;
   }
+
   return false;
 }
 
