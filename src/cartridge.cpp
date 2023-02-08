@@ -38,10 +38,9 @@ Cartridge::Cartridge(std::string_view const &romfile) {
     std::cerr << "BAD FILE" << std::endl;
     exit(1);
   }
-  array<uint8_t, 16> hdr;
-  for (int i = 0; i < 16; ++i) {
-    infile >> hdr[i];
-  }
+  array<uint8_t, 16> hdr = {};
+  infile.read((char *)hdr.data(), 16);
+
   parseHeader(hdr);
   std::istreambuf_iterator<char> start(infile), end;
   vector<uint8_t> data(start, end);
@@ -51,7 +50,7 @@ Cartridge::Cartridge(std::string_view const &romfile) {
   auto it = data.begin();
 
   if (hasTrainer) {
-    cerr << "has traner" << endl;
+    cerr << "has trainer" << endl;
     trainer = vector<uint8_t>(it, it + 512);
     it += trainer.size();
   }
