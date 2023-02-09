@@ -163,6 +163,7 @@ private:
   std::array<uint8_t, 256> &oam_;
   uint16_t cycle_ = 0;
   uint16_t scanline_ = 261; // initialize to pre-render scanline
+  unsigned long long frame_count_ = 0;
   std::array<uint8_t, 32> secondary_oam_{};
   bool bg_zero_ = false;
   bool szh_ = false;

@@ -27,6 +27,9 @@ public:
   uint16_t currPpuCycle() { return ppu_.currCycle(); }
 
 private:
+  void ppuTick() { ppu_.step(3, cpu_.nmiPin()); }
+  void mapperTick() { mapper_->tick(1); }
+
   bool debug_;
   cart::Cartridge cartridge_;
   vid::Registers ppu_registers_;

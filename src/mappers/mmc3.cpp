@@ -164,8 +164,6 @@ void MMC3::irqEnable(bool e) {
   // if interrupts are on and we're turning them off,
   // acknowledge whatever is pending
   if (irqEnabled_ && !e) {
-    // std::cout << +console_.currScanline() << ": " << +console_.currPpuCycle()
-    //           << " deassert IRQ" << std::endl;
     pending_irq_ = false;
     console_.irqPin() = false;
   }

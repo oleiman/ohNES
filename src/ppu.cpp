@@ -40,6 +40,7 @@ void PPU::step(uint16_t cycles, bool &nmi) {
       registers_.clearVBlankStarted();
     } else if (scanline_ >= 262) {
       scanline_ = 0;
+      ++frame_count_;
     }
 
     if (!rendering()) {
@@ -62,13 +63,14 @@ void PPU::step(uint16_t cycles, bool &nmi) {
     }
 
     tick();
+    if (scanline_ == 261 && cycle_ == 339 && (frame_count_ & 0b1)) {
+      tick();
+    }
   }
 }
 
 void PPU::visibleLine(bool pre_render) {
 
-  // TODO(oren): I still think these shouldn't be hitting in SMB3
-  // likely I'm simply not monitoring the address bus property (16-pix sprites)
   if (registers_.writePending() && !pre_render) {
     registers_.clearWritePending();
     registers_.incHorizScroll();
@@ -263,52 +265,6 @@ void PPU::fetchSprites() {
   }
 }
 
-void PPU::fetchSprites_old() {
-  std::copy(std::begin(sprites_staging_), std::end(sprites_staging_),
-            std::begin(sprites_));
-
-  // TODO(oren): whole range 0xEF - 0xFF is off limits
-  for (int i = 0; i < secondary_oam_.size(); i += 4) {
-    // pretty sure setting byte 0 to EF from program code just means
-    // sprite_y will never sit on a visible scanline, so this check may
-    // not actually be necessary
-    if (secondary_oam_[i] >= 0xEF) {
-      break;
-    }
-    Sprite sprite = {.v = 0};
-    uint8_t sprite_y = secondary_oam_[i];
-    uint8_t tile_idx = secondary_oam_[i + 1];
-    sprite.s.attrs.v = secondary_oam_[i + 2];
-    sprite.s.xpos = secondary_oam_[i + 3];
-
-    int tile_y = scanline_ - sprite_y;
-    if (sprite.s.attrs.s.v_flip) {
-      tile_y = registers_.spriteSize() - 1 - tile_y;
-    }
-
-    auto bank = registers_.spritePTableAddr(tile_idx);
-    if (registers_.spriteSize() == 16) {
-      tile_idx &= 0xFE;
-    }
-
-    auto tile_base = bank + (tile_idx * 16);
-    // NOTE(oren): If we're looking at the bottom half of an 8x16 sprite,
-    // skip to the next tile (top/bottom halves are arraned consecutively
-    // in pattern table RAM)
-    if (tile_y >= 8) {
-      tile_y -= 8;
-      tile_base += 16;
-    }
-    sprite.s.tile_lo = readByte(tile_base + tile_y);
-    sprite.s.tile_hi = readByte(tile_base + tile_y + 8);
-    if (!sprite.s.attrs.s.h_flip) {
-      util::reverseByte(sprite.s.tile_lo);
-      util::reverseByte(sprite.s.tile_hi);
-    }
-    sprites_[i >> 2].v |= sprite.v;
-  }
-}
-
 void PPU::LoadBackground() {
   switch (cycle_ & 0b111) {
   case 0b000:
@@ -415,7 +371,6 @@ void PPU::renderSpritePixel(int abs_x, int abs_y) {
       if (value > 0 && !filled) {
         if (Priority(sprite.s.attrs.s.priority) == Priority::FG || bg_zero_) {
           set_pixel(abs_x, abs_y, SystemPalette[palette[value]]);
-          // TODO(oren): should this be set outside the conditional block?
         }
         filled = true;
       }
