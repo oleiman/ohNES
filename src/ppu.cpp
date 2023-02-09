@@ -344,7 +344,8 @@ void PPU::renderBgPixel(int abs_x, int abs_y) {
     value = 0;
   }
   bg_zero_ = (value == 0);
-  set_pixel(abs_x, abs_y, SystemPalette[palette[value]]);
+  auto c = palette[value] & 0x3F;
+  set_pixel(abs_x, abs_y, SystemPalette[c]);
 }
 
 void PPU::renderSpritePixel(int abs_x, int abs_y) {
@@ -370,7 +371,8 @@ void PPU::renderSpritePixel(int abs_x, int abs_y) {
 
       if (value > 0 && !filled) {
         if (Priority(sprite.s.attrs.s.priority) == Priority::FG || bg_zero_) {
-          set_pixel(abs_x, abs_y, SystemPalette[palette[value]]);
+          auto c = palette[value] & 0x3F;
+          set_pixel(abs_x, abs_y, SystemPalette[c]);
         }
         filled = true;
       }

@@ -11,7 +11,7 @@ void CNROM::cartWrite(AddressT addr, DataT data) {
   if (addr < 0x8000) {
     // No Prg RAM available for this cartridge type
   } else { // 0x8000 <= addr < 0x10000
-    chrBankSelect = data;
+    chrBankSelect = data & 0b11;
   }
 }
 
