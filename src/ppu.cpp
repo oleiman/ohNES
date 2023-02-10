@@ -63,7 +63,7 @@ void PPU::step(uint16_t cycles, bool &nmi) {
     }
 
     tick();
-    if (scanline_ == 261 && cycle_ == 339 && (frame_count_ & 0b1)) {
+    if (scanline_ == 261 && cycle_ == 340 && (frame_count_ & 0b1)) {
       tick();
     }
   }
@@ -130,14 +130,9 @@ void PPU::handleSprites(bool pre_render) {
   } else if (257 <= cycle_ && cycle_ <= 320) {
     // fetch sprites
     fetchSprites();
-    if (cycle_ == 260) {
-      // if (mapper_.setPpuABus(0x1000)) {
-      // }
-    }
   } else if (cycle_ == 324) {
     // move sprites from the staging area ("latches") into the rendering area
     // ("registers")
-    // mapper_.setPpuABus(0x0000);
     std::copy(std::begin(sprites_staging_), std::end(sprites_staging_),
               std::begin(sprites_));
   }
