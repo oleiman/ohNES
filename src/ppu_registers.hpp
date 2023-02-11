@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nes_debugger.hpp"
 #include <array>
 #include <assert.h>
 #include <cstdint>
@@ -7,6 +8,10 @@
 
 namespace mapper {
 class NESMapper;
+}
+
+namespace sys {
+class NESDebugger;
 }
 
 // TODO(oren): Split this up. `Registers` is acting as both access point for PPU
@@ -173,6 +178,8 @@ private:
   const static std::array<uint8_t, 2> VRamAddrInc;
   const static std::array<uint16_t, 2> PTableAddr;
   const static std::array<uint8_t, 2> SpriteSize;
+
+  friend class sys::NESDebugger;
 };
 
 inline uint16_t Registers::baseNametableAddr() { return BaseNTAddr[V.NN]; }

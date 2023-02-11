@@ -6,3 +6,5 @@ compile_commands.json
 test/**/*.lst
 .cache
 .cache/**/*
+test/rom/*.nes
+

@@ -1,4 +1,5 @@
 #include "system.hpp"
+#include "nes_debugger.hpp"
 
 #include <array>
 #include <filesystem>
@@ -15,17 +16,14 @@ NES::NES(std::string_view const &romfile, bool debug)
       mapper_(
           MapperFactory(*this, cartridge_, ppu_registers_, ppu_oam_, joypad_1)),
       ppu_(*mapper_, ppu_registers_, ppu_oam_), cpu_(*mapper_, false),
-      debugger_(true, false) {
+      debugger_(*this) {
   cpu_.registerTickHandler(std::bind(&NES::ppuTick, this));
   cpu_.registerTickHandler(std::bind(&NES::mapperTick, this));
   cpu_.reset();
   std::cerr << cartridge_ << std::endl;
 }
 
-void NES::step() {
-  debug_ ? cpu_.debugStep(debugger_) : cpu_.step();
-  // ppu_.step(c * 3, cpu_.nmiPin());
-}
+void NES::step() { debug_ ? cpu_.debugStep(debugger_) : cpu_.step(); }
 
 bool NES::render(RenderBuffer &renderBuf) {
   if (cpu_.nmiPin() && ppu_.rendering()) {
@@ -36,4 +34,5 @@ bool NES::render(RenderBuffer &renderBuf) {
     return false;
   }
 }
+
 } // namespace sys

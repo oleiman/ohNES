@@ -2,8 +2,8 @@
 
 #include "cartridge.hpp"
 #include "cpu.hpp"
-#include "debugger.hpp"
 #include "mappers/mapper_factory.hpp"
+#include "nes_debugger.hpp"
 #include "ppu.hpp"
 
 #include <string>
@@ -26,6 +26,8 @@ public:
   uint16_t currScanline() { return ppu_.currScanline(); }
   uint16_t currPpuCycle() { return ppu_.currCycle(); }
 
+  NESDebugger &debugger() { return debugger_; }
+
 private:
   void ppuTick() { ppu_.step(3, cpu_.nmiPin()); }
   void mapperTick() { mapper_->tick(1); }
@@ -37,6 +39,8 @@ private:
   std::unique_ptr<mapper::NESMapper> mapper_;
   vid::PPU ppu_;
   cpu::M6502 cpu_;
-  dbg::Debugger debugger_;
+  NESDebugger debugger_;
+
+  friend class NESDebugger;
 };
 } // namespace sys

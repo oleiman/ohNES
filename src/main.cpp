@@ -1,3 +1,4 @@
+#include "nes_debugger.hpp"
 #include "ppu.hpp"
 #include "sdl/display.hpp"
 #include "sdl/pad_maps.hpp"
@@ -54,8 +55,13 @@ int main(int argc, char **argv) {
     exit(1);
   }
   {
-    Display<vid::WIDTH, vid::HEIGHT, SCALE> display;
-    NES nes(file, false);
+    bool debug = false;
+    std::unique_ptr<Display<sys::DBG_W, sys::DBG_H>> debug_display = nullptr;
+
+    auto display =
+        std::make_unique<Display<vid::WIDTH, vid::HEIGHT, SCALE>>("NES", file);
+
+    NES nes(file);
 
     SDL_Event event;
     bool quit = false;
@@ -63,20 +69,60 @@ int main(int argc, char **argv) {
     std::chrono::steady_clock::time_point clockEnd;
     while (!quit) {
       while (SDL_PollEvent(&event) != 0) {
+        // handle window events
+        display->handleEvent(event);
+        if (debug) {
+          debug_display->handleEvent(event);
+        }
+
         switch (event.type) {
         case SDL_QUIT:
-          clockEnd = std::chrono::steady_clock::now();
           quit = true;
           break;
         case SDL_KEYDOWN:
-        case SDL_KEYUP: {
-          auto sym = event.key.keysym.sym;
-          if (Kbd2JoyPad.count(sym) > 0) {
-            auto b = Kbd2JoyPad.find(sym)->second;
-            if (event.type == SDL_KEYDOWN) {
-              nes.joypad_1.press(b);
+          switch (event.key.keysym.sym) {
+          case SDLK_g:
+            display->focus();
+            break;
+          case SDLK_d:
+            if (debug_display == nullptr) {
+              debug_display = std::make_unique<Display<sys::DBG_W, sys::DBG_H>>(
+                  "DBG", "Debug: " + file);
+              debug = true;
             } else {
-              nes.joypad_1.release(b);
+              debug_display->focus();
+            }
+            break;
+          case SDLK_p:
+            nes.debugger().cyclePalete();
+            break;
+          case SDLK_1:
+            nes.debugger().selectNametable(0);
+            break;
+          case SDLK_2:
+            nes.debugger().selectNametable(1);
+            break;
+          case SDLK_3:
+            nes.debugger().selectNametable(2);
+            break;
+          case SDLK_4:
+            nes.debugger().selectNametable(3);
+            break;
+          default:
+            break;
+          }
+          // falls through to check for joypad events
+        case SDL_KEYUP: {
+          if (display->hasMouseFocus()) {
+            auto sym = event.key.keysym.sym;
+            auto jp = Kbd2JoyPad.find(sym);
+            if (jp != Kbd2JoyPad.end()) {
+              auto b = jp->second;
+              if (event.type == SDL_KEYDOWN) {
+                nes.joypad_1.press(b);
+              } else {
+                nes.joypad_1.release(b);
+              }
             }
           }
         } break;
@@ -86,8 +132,8 @@ int main(int argc, char **argv) {
         }
       }
 
-      // Render a whole frame before checking keyboard events. This effectively
-      // locks the polling loop to vsync. It's responsive enough.
+      // Render a whole frame before checking keyboard events. This
+      // effectively locks the polling loop to vsync. It's responsive enough.
       do {
         try {
           nes.step();
@@ -101,20 +147,30 @@ int main(int argc, char **argv) {
           SDL_Delay(SCREEN_DELAY);
           break;
         }
-      } while (!nes.render(display.renderBuf));
+      } while (!nes.render(display->renderBuf));
 
-      display.update();
+      display->update();
+      if (debug && debug_display->isShown()) {
+        nes.debugger().render(debug_display->renderBuf);
+        debug_display->update();
+      }
+
+      if (!display->isShown()) {
+        quit = true;
+      }
     }
 
+    clockEnd = std::chrono::steady_clock::now();
+
     std::cerr << "Quitting: "
-              << static_cast<double>(display.frames()) /
+              << static_cast<double>(display->frames()) /
                      (std::chrono::duration_cast<std::chrono::seconds>(
                           clockEnd - clockStart)
                           .count())
               << "fps" << std::endl;
 
     std::cout << "Cycles: " << +nes.state().cycle << std::endl;
-    std::cout << "Frames: " << display.frames() << std::endl;
+    std::cout << "Frames: " << display->frames() << std::endl;
   }
   SDL_Quit();
 

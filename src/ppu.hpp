@@ -8,6 +8,10 @@
 #include <iostream>
 #include <unordered_map>
 
+namespace sys {
+class NESDebugger;
+}
+
 namespace vid {
 constexpr int WIDTH = 256;
 constexpr int HEIGHT = 240;
@@ -176,9 +180,11 @@ private:
   uint8_t sec_oam_n_ = 0;
   bool sec_oam_write_enable_ = false;
 
-  static std::array<std::array<uint8_t, 3>, 64> SystemPalette;
-
   friend void LoadSystemPalette(const std::string &fname);
+  friend class sys::NESDebugger;
+
+public:
+  static std::array<std::array<uint8_t, 3>, 64> SystemPalette;
 };
 
 } // namespace vid

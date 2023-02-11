@@ -9,4 +9,5 @@ void reverseByte(uint8_t &b) {
       0b0001, 0b1001, 0b0101, 0b1101, 0b0011, 0b1011, 0b0111, 0b1111};
   b = (lookup[b & 0b1111] << 4) | (lookup[b >> 4]);
 }
+
 } // namespace util

@@ -22,7 +22,7 @@ public:
   virtual void write(AddressT, DataT) = 0;
   virtual DataT read(AddressT) = 0;
   virtual void ppu_write(AddressT, DataT) = 0;
-  virtual DataT ppu_read(AddressT) = 0;
+  virtual DataT ppu_read(AddressT, bool dbg = false) = 0;
   virtual uint8_t mirroring(void) const = 0;
   virtual bool setPpuABus(AddressT) = 0;
   virtual void tick(uint16_t) = 0;
@@ -120,12 +120,13 @@ public:
     }
   }
 
-  DataT ppu_read(AddressT addr) override {
+  DataT ppu_read(AddressT addr, bool dbg = false) override {
     if (addr < 0x2000) {
-      setPpuABus(addr);
+      if (!dbg) {
+        setPpuABus(addr);
+      }
       return static_cast<Derived *>(this)->chrRead(addr);
     } else if (addr < 0x3F00) {
-      // setPpuABus(addr);
       addr = mirror_vram_addr(addr, static_cast<Derived *>(this)->mirroring());
       return nametable_[addr];
     } else {

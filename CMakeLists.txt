@@ -25,6 +25,7 @@ add_executable(ohNES
   src/mappers/mmc2.cpp
   src/mappers/mmc3.cpp
   src/mappers/mapper_factory.cpp
+  src/nes_debugger.cpp
   src/ppu.cpp
   src/joypad.cpp
   src/util.cpp
