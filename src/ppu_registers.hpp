@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nes_debugger.hpp"
+#include "dbg/nes_debugger.hpp"
 #include <array>
 #include <assert.h>
 #include <cstdint>

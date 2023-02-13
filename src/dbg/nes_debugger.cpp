@@ -1,6 +1,9 @@
-#include "nes_debugger.hpp"
+#include "dbg/nes_debugger.hpp"
+#include "instruction.hpp"
 #include "system.hpp"
 #include "util.hpp"
+
+#include <algorithm>
 
 using vid::PPU;
 
@@ -8,11 +11,31 @@ namespace sys {
 
 NESDebugger::NESDebugger(NES &console)
     : dbg::Debugger(false, false), console_(console) {}
-const instr::Instruction &NESDebugger::step(const instr::Instruction &in,
-                                            const cpu::CpuState &state,
-                                            mem::Mapper &mapper) {
 
-  instr_cache_.insert(in);
+const instr::Instruction &NESDebugger::step(const instr::Instruction &in,
+                                            const cpu::CpuState &cpu_state,
+                                            mem::Mapper &mapper) {
+  curr_pc_ = in.pc;
+
+  auto match = std::any_of(
+      std::begin(breakpoints_), std::end(breakpoints_),
+      [&](const std::unique_ptr<Breakpoint> &bp) { return bp->check(in); });
+
+  if (match && !resume_) {
+    std::cout << "BREAK! " << InstrToStr(in) << std::endl;
+    in.discard = true;
+    setMode(Mode::BREAK);
+  } else if (mode() == Mode::STEP) {
+    setMode(Mode::PAUSE);
+  }
+
+  if (logging_ && log_stream_) {
+    log_stream_ << std::left << std::setw(50) << InstrToStr(in)
+                << " (C: " << in.issueCycle << ")\n";
+  }
+
+  resume_ = false;
+
   return in;
 }
 
@@ -228,4 +251,135 @@ uint8_t NESDebugger::ppu_read(uint16_t addr) {
   // debug read (no address bus activity)
   return console_.mapper_->ppu_read(addr, true);
 }
+
+uint8_t NESDebugger::cpu_read(uint16_t addr) {
+  return console_.mapper_->read(addr);
+}
+
+instr::Instruction NESDebugger::decode(AddressT offset) {
+  auto pc = console_.state().pc;
+  pc += offset;
+
+  return instr::Instruction(cpu_read(pc), pc, 0);
+  // TODO(oren): better representation of the Address mode and stuff
+}
+
+uint16_t make_addr(uint8_t lo, uint8_t hi) {
+  return (static_cast<uint16_t>(hi) << 8) | lo;
+}
+
+// TODO(oren): would be nicer to have this in the Instruction module in the
+// CPU, but the memory access logic is all tangled up. When actually decoding
+// instructions in the CPU, reads have a cost, so do carries, and there are
+// several special cases to penalize address boundary crossing and the like.
+// it's convenient then to just construct a nice string representation here.
+std::string NESDebugger::InstrToStr(const instr::Instruction &in) {
+  using AMode = instr::AddressMode;
+  std::stringstream ss;
+
+  if (in.discard) {
+    ss << "***BREAK***";
+  }
+
+  ss << "0x" << std::hex << std::setfill('0') << std::setw(4) << +in.pc << "\t";
+  std::array<int, 3> data = {-1, -1, -1};
+  for (int i = 0; i < in.size; ++i) {
+    data[i] = (cpu_read(in.pc + i));
+  }
+
+  ss << std::uppercase;
+
+  for (int i = 0; i < data.size(); ++i) {
+    ss << " ";
+    auto b = data[i];
+    if (b >= 0) {
+      ss << std::setw(2) << +cpu_read(in.pc + i);
+    } else {
+      ss << "  ";
+    }
+  }
+
+  ss << "  " << instr::GetMnemonic(in.operation) << "  ";
+  auto am = in.addressMode;
+
+  switch (am) {
+  case AMode::implicit:
+    break;
+  case AMode::accumulator:
+    ss << "A";
+    break;
+  case AMode::immediate:
+    ss << "#$" << data[1];
+    break;
+  case AMode::absolute: {
+    auto addr = make_addr(data[1], data[2]);
+    ss << "$" << std::setw(4) << addr;
+    if (in.operation != instr::Operation::jump) {
+      ss << " = " << std::setw(2) << +cpu_read(addr);
+    }
+  } break;
+  case AMode::absoluteX: {
+    auto addr = make_addr(data[1], data[2]);
+    ss << "$" << std::setw(4) << addr << ",X @ ";
+    addr += console_.state().rX;
+    ss << std::setw(4) << addr << " = " << std::setw(2) << +cpu_read(addr);
+  } break;
+  case AMode::absoluteY: {
+    auto addr = make_addr(data[1], data[2]);
+    ss << "$" << std::setw(4) << addr << ",Y @ ";
+    addr += console_.state().rY;
+    ss << std::setw(4) << addr << " = " << std::setw(2) << +cpu_read(addr);
+  } break;
+  case AMode::zeroPage:
+  case AMode::zeroPageX:
+  case AMode::zeroPageY: {
+    auto addr = static_cast<uint16_t>(data[1]);
+    ss << "$" << std::setw(2) << addr;
+    if (am == AMode::zeroPageX) {
+      addr += console_.state().rX;
+      ss << ",X @ " << std::setw(4) << addr;
+    } else if (am == AMode::zeroPageY) {
+      addr += console_.state().rY;
+      ss << ",Y @ " << std::setw(4) << addr;
+    }
+    if (in.operation != instr::Operation::jump) {
+      ss << " = " << std::setw(2) << +cpu_read(addr);
+    }
+  } break;
+  case AMode::relative: {
+    int8_t offset = static_cast<int8_t>(data[1]);
+    auto target = in.pc + 2 - (-offset);
+    ss << "$" << std::setw(4) << target;
+  } break;
+  case AMode::indirect: {
+    auto addr = make_addr(data[1], data[2]);
+    auto target = make_addr(cpu_read(addr), cpu_read(addr + 1));
+    ss << "($" << std::setw(4) << addr << ") @ " << std::setw(4) << target;
+  } break;
+  case AMode::indexedIndirect: {
+    // x,indexed
+    // zero page address with X offset, without carry (wraparound)
+    uint8_t zp_addr = data[1] + console_.state().rX;
+    uint16_t target = make_addr(cpu_read(zp_addr), cpu_read(zp_addr + 1));
+    ss << "($" << std::setw(2) << +data[1] << ",X) @ " << std::setw(2)
+       << +zp_addr << " = " << std::setw(4) << target << " = " << std::setw(2)
+       << +cpu_read(target);
+  } break;
+  case AMode::indirectIndexed: {
+    // indexed,y
+    uint8_t zp_addr = data[1];
+    uint16_t base = make_addr(cpu_read(zp_addr), cpu_read(zp_addr + 1));
+    uint16_t target = base + console_.state().rY;
+    ss << "($" << std::setw(2) << +zp_addr << "),Y = " << std::setw(4) << base
+       << " @ " << std::setw(4) << target << " = " << std::setw(2)
+       << +cpu_read(target);
+  } break;
+  default:
+    ss << "(" << instr::GetAModeMnemonic(am) << ")";
+    break;
+  }
+
+  return ss.str();
+}
+
 } // namespace sys

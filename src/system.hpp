@@ -2,8 +2,8 @@
 
 #include "cartridge.hpp"
 #include "cpu.hpp"
+#include "dbg/nes_debugger.hpp"
 #include "mappers/mapper_factory.hpp"
-#include "nes_debugger.hpp"
 #include "ppu.hpp"
 
 #include <string>
@@ -27,12 +27,16 @@ public:
   uint16_t currPpuCycle() { return ppu_.currCycle(); }
 
   NESDebugger &debugger() { return debugger_; }
+  mapper::NESMapper &mapper() { return *mapper_; }
+
+  bool paused() const { return debug_ && debugger_.paused(); }
+
+  bool debug_;
 
 private:
   void ppuTick() { ppu_.step(3, cpu_.nmiPin()); }
   void mapperTick() { mapper_->tick(1); }
 
-  bool debug_;
   cart::Cartridge cartridge_;
   vid::Registers ppu_registers_;
   std::array<uint8_t, 256> ppu_oam_ = {};

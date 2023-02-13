@@ -25,10 +25,12 @@ add_executable(ohNES
   src/mappers/mmc2.cpp
   src/mappers/mmc3.cpp
   src/mappers/mapper_factory.cpp
-  src/nes_debugger.cpp
+  src/dbg/nes_debugger.cpp
   src/ppu.cpp
   src/joypad.cpp
   src/util.cpp
+  src/wx_/dbg_app.cpp
+  src/wx_/dbg_wxapp.cpp
 )
 
 find_package(SDL2 REQUIRED)
@@ -44,15 +46,34 @@ if (APPLE)
   # target_link_libraries(ohNES PRIVATE ${APPKIT_LIB})
 endif()
 
-target_include_directories(ohNES PRIVATE src ${SDL2_INCLUDE_DIRS} external/nativefiledialog/src/include external/inc)
-target_link_directories(ohNES PRIVATE external/nativefiledialog/build/lib/Release/x64)
+set(wxWidgets_USE_DEBUG ON)
+find_package(wxWidgets REQUIRED core base)
+
+include(${wxWidgets_USE_FILE})
+
+target_include_directories(ohNES PRIVATE
+  src
+  ${SDL2_INCLUDE_DIRS}
+  external/nativefiledialog/src/include external/inc
+  ${wxWidgets_INCLUDE_DIRS}
+)
+target_link_directories(ohNES PRIVATE
+  external/nativefiledialog/build/lib/Release/x64
+)
 set_property(TARGET ohNES PROPERTY CXX_STANDARD 17)
 
 if (LINUX AND NOT APPLE)
 set(GPERF_LIB profiler)
 endif()
 
-target_link_libraries(ohNES 6502-emu ${SDL2_LIBRARIES} ${GPERF_LIB} nfd ${APPKIT_LIB})
+target_link_libraries(ohNES
+  6502-emu
+  ${SDL2_LIBRARIES}
+  ${GPERF_LIB}
+  nfd
+  ${APPKIT_LIB}
+  ${wxWidgets_LIBRARIES}
+)
 # if (LINUX AND NOT APPLE)
 #   target_link_libraries(ohNES ${GTK3_LIBRARIES})
 # endif()

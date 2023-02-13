@@ -1,8 +1,9 @@
-#include "nes_debugger.hpp"
+#include "dbg/nes_debugger.hpp"
 #include "ppu.hpp"
 #include "sdl/display.hpp"
 #include "sdl/pad_maps.hpp"
 #include "system.hpp"
+#include "wx_/dbg_app.h"
 
 #include <SDL.h>
 #include <args.hxx>
@@ -12,9 +13,11 @@
 #include <chrono>
 #include <iostream>
 #include <string>
+#include <thread>
 
 using vid::LoadSystemPalette;
 
+using dbg::DebuggerApp;
 using sdl_internal::Display;
 using sdl_internal::Kbd2JoyPad;
 using sys::NES;
@@ -46,6 +49,9 @@ int main(int argc, char **argv) {
     }
   }
 
+  NES nes(file);
+  std::unique_ptr<DebuggerApp> debug_app = std::make_unique<DebuggerApp>(nes);
+
   LoadSystemPalette(DEFAULT_PALETTE);
 
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -55,13 +61,11 @@ int main(int argc, char **argv) {
     exit(1);
   }
   {
-    bool debug = false;
+
     std::unique_ptr<Display<sys::DBG_W, sys::DBG_H>> debug_display = nullptr;
 
     auto display =
         std::make_unique<Display<vid::WIDTH, vid::HEIGHT, SCALE>>("NES", file);
-
-    NES nes(file);
 
     SDL_Event event;
     bool quit = false;
@@ -71,7 +75,7 @@ int main(int argc, char **argv) {
       while (SDL_PollEvent(&event) != 0) {
         // handle window events
         display->handleEvent(event);
-        if (debug) {
+        if (nes.debug_) {
           debug_display->handleEvent(event);
         }
 
@@ -88,8 +92,10 @@ int main(int argc, char **argv) {
             if (debug_display == nullptr) {
               debug_display = std::make_unique<Display<sys::DBG_W, sys::DBG_H>>(
                   "DBG", "Debug: " + file);
-              debug = true;
+              debug_app->App()->Show(true);
+              nes.debug_ = true;
             } else {
+              debug_app->App()->Show(true);
               debug_display->focus();
             }
             break;
@@ -137,6 +143,9 @@ int main(int argc, char **argv) {
       do {
         try {
           nes.step();
+          if (nes.paused()) {
+            break;
+          }
         } catch (std::exception &e) {
           clockEnd = std::chrono::steady_clock::now();
           std::cerr << e.what() << std::endl;
@@ -150,7 +159,7 @@ int main(int argc, char **argv) {
       } while (!nes.render(display->renderBuf));
 
       display->update();
-      if (debug && debug_display->isShown()) {
+      if (nes.debug_ && debug_display->isShown()) {
         nes.debugger().render(debug_display->renderBuf);
         debug_display->update();
       }

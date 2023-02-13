@@ -1,11 +1,11 @@
 #include "system.hpp"
-#include "nes_debugger.hpp"
 
 #include <array>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <thread>
 #include <vector>
 
 using mapper::MapperFactory;
@@ -23,7 +23,15 @@ NES::NES(std::string_view const &romfile, bool debug)
   std::cerr << cartridge_ << std::endl;
 }
 
-void NES::step() { debug_ ? cpu_.debugStep(debugger_) : cpu_.step(); }
+void NES::step() {
+  if (!debug_) {
+    cpu_.step();
+  } else if (!debugger_.paused()) {
+    cpu_.debugStep(debugger_);
+  }
+
+  // debug_ ? cpu_.debugStep(debugger_) : cpu_.step();
+}
 
 bool NES::render(RenderBuffer &renderBuf) {
   if (cpu_.nmiPin() && ppu_.rendering()) {
