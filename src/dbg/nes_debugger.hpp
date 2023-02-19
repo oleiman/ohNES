@@ -62,6 +62,7 @@ public:
 
   instr::Instruction decode(AddressT pc);
   std::string InstrToStr(const instr::Instruction &instr);
+  std::string CpuStateStr() const;
 
   void setLogging(bool l) {
     if (l && !logging_) {
@@ -103,6 +104,7 @@ private:
 
   uint8_t ppu_read(uint16_t addr);
   uint8_t cpu_read(uint16_t addr);
+  uint8_t palette_read(uint16_t addr);
 
   NES &console_;
   InstructionCache instr_cache_;

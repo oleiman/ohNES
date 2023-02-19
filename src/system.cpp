@@ -29,14 +29,17 @@ void NES::step() {
   } else if (!debugger_.paused()) {
     cpu_.debugStep(debugger_);
   }
-
-  // debug_ ? cpu_.debugStep(debugger_) : cpu_.step();
 }
 
 bool NES::render(RenderBuffer &renderBuf) {
-  if (cpu_.nmiPin() && ppu_.rendering()) {
+
+  // NOTE(oren): isFrameReady clears the frame ready flag regardless of status,
+  // so effectively for each completed frame only one invocation will return
+  // true until the next frame is completed.
+  if (ppu_registers_.isFrameReady()) {
     std::copy(ppu_.frameBuffer().begin(), ppu_.frameBuffer().end(),
               renderBuf.begin());
+    ppu_.clearFrame();
     return true;
   } else {
     return false;

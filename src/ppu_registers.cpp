@@ -52,17 +52,40 @@ void Registers::write(CName r, uint8_t val, mapper::NESMapper &mapper) {
     }
     addr_latch_ = !addr_latch_;
   } else if (r == PPUDATA) {
-    write_pending_ = true;
+    // If we're writing to palette ram, perform the write right away,
+    // increment the vram addr, and suppress the usual VRAM write
+    if ((vram_addr_ & 0x3F00) == 0x3F00) {
+      mapper.palette_write(vram_addr_, val);
+      vram_addr_ += vRamAddrInc();
+      write_pending_ = false;
+    } else {
+      write_pending_ = true;
+      write_value_ = val;
+    }
   } else if (r == PPUCTRL) {
     T.NN = val & 0b11;
+  } else if (r == OAMDATA) {
+    mapper.oam_write(oamAddr(), val);
+    regs_[OAMADDR]++;
   }
 
-  // TODO(oren): confusing control flow
-  bool gen_nmi = vBlankNMI();
-  regs_[r] = val;
+  // VBL NMI setting before the write
+  bool vblnmi_orig = vBlankNMI();
 
-  if (!gen_nmi && vBlankNMI() && vBlankStarted()) {
+  // VRAM writes should not overwrite the read buffer
+  if (r != PPUDATA) {
+    regs_[r] = val;
+  }
+
+  // NOTE(oren): this only applies to PPUCTRL writes
+  if (!vblnmi_orig && vBlankNMI() && vBlankStarted()) {
+    // If we're in vblank and NMI is turned on, instruct PPU to generate an NMI
+    // at next opportunity
     nmi_pending_ = true;
+  } else if (vblnmi_orig && !vBlankNMI() && cycle_ <= 3) {
+    // Otherwise if vblank was just turned off and NMI may be about to trigger,
+    // instruct PPU to suppress that NMI signal
+    suppress_vblank_ = true;
   }
 
 } // namespace ppu
@@ -78,7 +101,7 @@ uint8_t Registers::read(CName r, mapper::NESMapper &mapper) {
   // TODO(oren): Refer to wiki for timing concerns, specifically around reading
   // from palette ram
   if (r == PPUSTATUS) {
-    regs_[r] &= ~BIT7;
+    clearVBlankStarted();
     addr_latch_ = false;
   } else if (r == PPUDATA) {
 
@@ -91,20 +114,77 @@ uint8_t Registers::read(CName r, mapper::NESMapper &mapper) {
     // now the right data is in PPUDATA for the next CPU read
     // which sets the flag again, triggering the PPU to read from
     // the incremented address
+
+    // TODO(oren): set the address bus to something I guess? but what?
+    // blargg tests suggest that reading ppudata should
+    // clock the irq counter but idk how or why
+    // std::cout << std::hex << vram_addr_ << std::endl;
     read_pending_ = true;
 
-    // TODO(oren): something special for palette (i.e. vram_add 0x3F00 -
-    // 0x3FFF) need to be able to place a byte directly into PPUDATA and
-    // return it
-    result = regs_[PPUDATA];
+    if ((vram_addr_ & 0x3F00) == 0x3F00) {
+      result = mapper.palette_read(vram_addr_);
+      if (grayscale()) {
+        result &= 0x30;
+      }
+
+    } else {
+      result = regs_[PPUDATA];
+    }
+  } else if (r == OAMDATA) {
+    result = mapper.oam_read(oamAddr());
   }
   io_latch_ = result;
   return result;
 }
+
+void Registers::tick() {
+  ++cycle_;
+  if (cycle_ == 341) {
+    ++scanline_;
+    cycle_ = 0;
+    if (scanline_ == 241) {
+      frame_ready_ = true;
+    } else if (scanline_ == 262) {
+      nextFrame();
+    }
+  }
+}
+
+bool Registers::setVBlankStarted() {
+  if (!suppress_vblank_) {
+    regs_[PPUSTATUS] |= BIT7;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+void Registers::nextFrame() {
+  scanline_ = 0;
+  suppress_vblank_ = false;
+  ++frame_count_;
+}
+
+// TODO(oren): move this bit of state into the PPU proper I think.
+bool Registers::isFrameReady() {
+  auto tmp = frame_ready_;
+  frame_ready_ = false;
+  return tmp;
+}
+
+void Registers::clearVBlankStarted() {
+  regs_[PPUSTATUS] &= ~BIT7;
+  // clear any pending NMI if VBL ends
+  nmi_pending_ = false;
+  if (scanline_ == 241 && (0 < cycle_ && cycle_ <= 3)) {
+    suppress_vblank_ = true;
+  }
+}
+
 uint8_t Registers::getData() {
   write_pending_ = false;
   vram_addr_ += vRamAddrInc();
-  return regs_[PPUDATA];
+  return write_value_;
 }
 
 void Registers::putData(uint8_t data) {

@@ -34,7 +34,7 @@ public:
   bool debug_;
 
 private:
-  void ppuTick() { ppu_.step(3, cpu_.nmiPin()); }
+  void ppuTick() { ppu_.step(3 + ppu_registers_.oamCycles(), cpu_.nmiPin()); }
   void mapperTick() { mapper_->tick(1); }
 
   cart::Cartridge cartridge_;

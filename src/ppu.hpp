@@ -64,16 +64,15 @@ public:
       std::array<uint8_t, 256> &oam);
 
   FrameBuffer const &frameBuffer() { return framebuf_; }
+  void clearFrame() {
+    std::fill(&framebuf_[0][0], &framebuf_[0][0] + framebuf_.size() * 3, 0x00);
+  }
 
   void step(uint16_t cycles, bool &nmi);
 
   bool rendering();
-  uint16_t currScanline() { return scanline_; }
-  uint16_t currCycle() { return cycle_; }
-
-  // For debugging and ROM exploratory purposes
-  void showTile(uint8_t x, uint8_t y, uint8_t bank, uint8_t tile);
-  void showPatternTable();
+  uint16_t currScanline() { return registers_.scanline(); }
+  uint16_t currCycle() { return registers_.cycle(); }
 
 private:
   void visibleLine(bool pre_render = false);
@@ -109,9 +108,7 @@ private:
     L latch;
 
     void Load() {
-      // std::cout << "b: " << std::bitset<16>(value) << std::endl;
       value |= (static_cast<V>(latch) << ((sizeof(V) - sizeof(L)) * 8));
-      // std::cout << "a: " << std::bitset<16>(value) << std::endl;
     }
     void Shift() { value >>= 1; }
     void Latch(L l) { latch = l; }
@@ -141,8 +138,6 @@ private:
 
   uint8_t nametable_reg;
 
-  void tick();
-
   // TODO(oren): find a way to advance the clock from in here
   DataT readByte(AddressT addr) { return mapper_.ppu_read(addr); }
   void writeByte(AddressT addr, DataT data) { mapper_.ppu_write(addr, data); }
@@ -165,9 +160,6 @@ private:
   mapper::NESMapper &mapper_;
   Registers &registers_;
   std::array<uint8_t, 256> &oam_;
-  uint16_t cycle_ = 0;
-  uint16_t scanline_ = 261; // initialize to pre-render scanline
-  unsigned long long frame_count_ = 0;
   std::array<uint8_t, 32> secondary_oam_{};
   bool bg_zero_ = false;
   bool szh_ = false;

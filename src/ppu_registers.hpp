@@ -48,6 +48,13 @@ public:
   void write(CName r, uint8_t val, mapper::NESMapper &);
   uint8_t read(CName r, mapper::NESMapper &);
 
+  uint16_t cycle() const { return cycle_; }
+  uint16_t scanline() const { return scanline_; }
+  unsigned long frames() const { return frame_count_; }
+  void nextFrame();
+  bool isFrameReady();
+  void tick();
+
   /*** PPUCTRL Accessors ***/
   uint16_t baseNametableAddr();
   uint8_t vRamAddrInc();
@@ -59,6 +66,7 @@ public:
   // true: output color on EXT pins
   bool ppuMasterSlave();
   bool vBlankNMI();
+  bool isNmiSuppressed() { return suppress_vblank_; }
 
   // TODO(oren): scrollingMSB ??
 
@@ -80,7 +88,8 @@ public:
   bool spriteZeroHit();
   void setSpriteZeroHit(bool val);
   bool vBlankStarted();
-  void setVBlankStarted();
+  // Return false if vblank suppressed by PPUSTATUS special case
+  bool setVBlankStarted();
   void clearVBlankStarted();
   /*END PPUSTATUS Accessors ***/
 
@@ -151,6 +160,12 @@ public:
   uint16_t oamCycles();
 
 private:
+  uint16_t cycle_ = 0;
+  uint16_t scanline_ = 261;
+  unsigned long frame_count_ = 0;
+  bool frame_ready_ = false;
+  bool suppress_vblank_ = false;
+
   struct scroll_var {
     uint8_t yyy : 3;
     uint8_t NN : 2;
@@ -168,6 +183,7 @@ private:
   uint8_t io_latch_ = 0;
   uint16_t vram_addr_ = 0x0000;
   bool write_pending_ = false;
+  uint8_t write_value_ = 0x00;
   bool read_pending_ = false;
   bool nmi_pending_ = false;
   uint16_t oam_cycles_ = 0;
@@ -227,9 +243,6 @@ inline void Registers::setSpriteZeroHit(bool val) {
   }
 }
 inline bool Registers::vBlankStarted() { return regs_[PPUSTATUS] & BIT7; }
-
-inline void Registers::setVBlankStarted() { regs_[PPUSTATUS] |= BIT7; }
-inline void Registers::clearVBlankStarted() { regs_[PPUSTATUS] &= ~BIT7; }
 
 inline uint8_t Registers::oamAddr() { return regs_[OAMADDR]; }
 inline uint8_t Registers::oamData() { return regs_[OAMDATA]; }

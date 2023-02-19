@@ -25,46 +25,42 @@ PPU::PPU(mapper::NESMapper &mapper, Registers &registers,
     : mapper_(mapper), registers_(registers), oam_(oam) {}
 
 void PPU::step(uint16_t cycles, bool &nmi) {
-  if (registers_.handleNmi()) {
-    nmi = true;
-  }
-  cycles += registers_.oamCycles();
   while (cycles-- > 0) {
-    if (cycle_ == 1 && scanline_ == 241) {
-      if (registers_.vBlankNMI()) {
-        nmi = true;
-      }
-      registers_.setVBlankStarted();
-    } else if (scanline_ == 261 && cycle_ == 1) {
+    if (registers_.scanline() == 241 && registers_.cycle() == 1) {
+      nmi = (registers_.setVBlankStarted() && registers_.vBlankNMI());
+    } else if (registers_.scanline() == 261 && registers_.cycle() == 1) {
       ClearSpriteZeroHit();
       registers_.clearVBlankStarted();
-    } else if (scanline_ >= 262) {
-      scanline_ = 0;
-      ++frame_count_;
+    }
+
+    // Handle any pending changes to NMI settings
+    if (registers_.handleNmi() || nmi) {
+      nmi = !registers_.isNmiSuppressed();
     }
 
     if (!rendering()) {
       vBlankLine();
-    } else if (scanline_ < 240) {
+    } else if (registers_.scanline() < 240) {
       visibleLine();
-    } else if (scanline_ == 240) {
-    } else if (scanline_ < 261) {
+    } else if (registers_.scanline() == 240) {
+    } else if (registers_.scanline() < 261) {
       vBlankLine();
-    } else if (scanline_ == 261) {
+    } else if (registers_.scanline() == 261) {
       // pre-render scanline
       // TODO(oren): not sure this is exactly the same as a visible line.
       // memory reads should be the same (to prepare first two tiles of next
       // line) but it doesn't make sense to actually render.
       visibleLine();
-      if (cycle_ == 260) {
-      } else if (280 <= cycle_ && cycle_ <= 304) {
+      if (registers_.cycle() == 260) {
+      } else if (280 <= registers_.cycle() && registers_.cycle() <= 304) {
         registers_.syncScrollY();
       }
     }
 
-    tick();
-    if (scanline_ == 261 && cycle_ == 340 && (frame_count_ & 0b1)) {
-      tick();
+    registers_.tick();
+    if (rendering() && registers_.scanline() == 261 &&
+        registers_.cycle() == 339 && (registers_.frames() & 0b1)) {
+      registers_.tick();
     }
   }
 }
@@ -87,25 +83,29 @@ void PPU::visibleLine(bool pre_render) {
 
 void PPU::handleBackground(bool pre_render) {
   // NOTE(oren): do nothing on cycle 0
-  if (1 <= cycle_ && cycle_ <= 256) { // Data for current scanline
-    int dot_x = cycle_ - 1;
-    int dot_y = scanline_;
+
+  if (1 <= registers_.cycle() &&
+      registers_.cycle() <= 256) { // Data for current scanline
+    int dot_x = registers_.cycle() - 1;
+    int dot_y = registers_.scanline();
 
     LoadBackground();
     if (registers_.showBackground() && !pre_render) {
       renderBgPixel(dot_x, dot_y);
+    } else {
+      bg_zero_ = true;
     }
     backgroundSR_.Shift();
 
-    if (cycle_ == 256) {
+    if (registers_.cycle() == 256) {
       registers_.incVertScroll();
     }
-  } else if (cycle_ == 257) {
+  } else if (registers_.cycle() == 257) {
     registers_.syncScrollX();
-  } else if (321 <= cycle_ && cycle_ <= 336) {
+  } else if (321 <= registers_.cycle() && registers_.cycle() <= 336) {
     LoadBackground();
     backgroundSR_.Shift();
-  } else if (cycle_ == 337 || cycle_ == 339) {
+  } else if (registers_.cycle() == 337 || registers_.cycle() == 339) {
     // garbage nametable reads (timing for mmc5?)
     fetchNametable();
   }
@@ -114,23 +114,23 @@ void PPU::handleBackground(bool pre_render) {
 void PPU::handleSprites(bool pre_render) {
 
   // rendering
-  if (1 <= cycle_ && cycle_ < 257) {
-    int dot_x = cycle_ - 1;
-    int dot_y = scanline_;
+  if (1 <= registers_.cycle() && registers_.cycle() < 257) {
+    int dot_x = registers_.cycle() - 1;
+    int dot_y = registers_.scanline();
     if (registers_.showSprites() && !pre_render) {
       renderSpritePixel(dot_x, dot_y);
     }
   }
 
   // evaluation
-  if (1 <= cycle_ && cycle_ <= 64) {
+  if (1 <= registers_.cycle() && registers_.cycle() <= 64) {
     clearOam();
-  } else if (65 <= cycle_ && cycle_ <= 256) {
+  } else if (65 <= registers_.cycle() && registers_.cycle() <= 256) {
     evaluateSprites();
-  } else if (257 <= cycle_ && cycle_ <= 320) {
+  } else if (257 <= registers_.cycle() && registers_.cycle() <= 320) {
     // fetch sprites
     fetchSprites();
-  } else if (cycle_ == 324) {
+  } else if (registers_.cycle() == 324) {
     // move sprites from the staging area ("latches") into the rendering area
     // ("registers")
     std::copy(std::begin(sprites_staging_), std::end(sprites_staging_),
@@ -141,12 +141,12 @@ void PPU::handleSprites(bool pre_render) {
 }
 
 void PPU::clearOam() {
-  if (cycle_ % 2 == 1) {
-    assert((cycle_ >> 1) < secondary_oam_.size());
-    secondary_oam_[cycle_ >> 1] = 0xFF;
+  if (registers_.cycle() % 2 == 1) {
+    assert((registers_.cycle() >> 1) < secondary_oam_.size());
+    secondary_oam_[registers_.cycle() >> 1] = 0xFF;
   }
-  if (cycle_ % 8 == 1) {
-    sprites_staging_[cycle_ >> 3].v = 0;
+  if (registers_.cycle() % 8 == 1) {
+    sprites_staging_[registers_.cycle() >> 3].v = 0;
   }
   oam_n_ = 0;
   oam_m_ = 0;
@@ -163,8 +163,8 @@ void PPU::evaluateSprites() {
       assert(4 * sec_oam_n_ < secondary_oam_.size());
       secondary_oam_[4 * sec_oam_n_] = oam_[4 * oam_n_];
       oam_m_++;
-    } else if (y_coord <= scanline_ &&
-               scanline_ < (y_coord + registers_.spriteSize())) {
+    } else if (y_coord <= registers_.scanline() &&
+               registers_.scanline() < (y_coord + registers_.spriteSize())) {
       assert(4 * sec_oam_n_ + oam_m_ < secondary_oam_.size());
       secondary_oam_[4 * sec_oam_n_ + oam_m_] = oam_[4 * oam_n_ + oam_m_];
       sprites_staging_[sec_oam_n_].s.idx = oam_n_;
@@ -197,14 +197,14 @@ void PPU::fetchSprites() {
 
   // HACK(oren): seems like we miss cycles occasionally
   // I've noticed this in the switch stmt below as well...not sure why
-  if (cycle_ < 264) {
+  if (registers_.cycle() < 264) {
     idx = 0;
   }
 
   bool dummy = secondary_oam_[4 * idx] >= 0xEF;
   Sprite &sprite = (dummy ? dummy_sprite_ : sprites_staging_[idx]);
 
-  uint8_t step = cycle_ & 0b111;
+  uint8_t step = registers_.cycle() & 0b111;
   switch (step) {
   case 0b001:
     readByte(registers_.spritePTableAddr(1));
@@ -222,7 +222,7 @@ void PPU::fetchSprites() {
     break;
   case 0b101:
   case 0b111: {
-    int tile_y = scanline_ - sprite_y;
+    int tile_y = registers_.scanline() - sprite_y;
     if (sprite.s.attrs.s.v_flip) {
       tile_y = registers_.spriteSize() - 1 - tile_y;
     }
@@ -251,7 +251,7 @@ void PPU::fetchSprites() {
     if (!dummy) {
       ++idx;
     }
-    if (idx >= sprites_staging_.size() && cycle_ < 320) {
+    if (idx >= sprites_staging_.size() && registers_.cycle() < 320) {
       idx = sprites_staging_.size() - 1;
     }
     break;
@@ -261,7 +261,7 @@ void PPU::fetchSprites() {
 }
 
 void PPU::LoadBackground() {
-  switch (cycle_ & 0b111) {
+  switch (registers_.cycle() & 0b111) {
   case 0b000:
     registers_.incHorizScroll();
     break;
@@ -360,7 +360,7 @@ void PPU::renderSpritePixel(int abs_x, int abs_y) {
       sprite.s.tile_hi >>= 1;
       ++sprite.s.xpos;
 
-      if (value > 0 && sprite.s.idx == 0x00 && !bg_zero_) {
+      if (value > 0 && sprite.s.idx == 0x00 && !bg_zero_ && abs_x < 255) {
         SetSpriteZeroHit();
       }
 
@@ -376,7 +376,7 @@ void PPU::renderSpritePixel(int abs_x, int abs_y) {
 }
 
 void PPU::vBlankLine() {
-  bool odd = cycle_ & 0x01;
+  bool odd = registers_.cycle() & 0x01;
 
   // TODO(oren): service CPU memory requests
   // again only on odd cycles to account for 2-cycle cost. may need to look
@@ -390,6 +390,7 @@ void PPU::vBlankLine() {
       auto data = registers_.getData();
       writeByte(addr, data);
     }
+    mapper_.setPpuABus(registers_.vRamAddr());
   }
 }
 
@@ -406,10 +407,10 @@ std::array<uint8_t, 4> PPU::bgPalette() {
   uint8_t pidx = attr << 2;
 
   return {
-      readByte(0x3f00),
-      readByte(0x3f01 + pidx),
-      readByte(0x3f02 + pidx),
-      readByte(0x3f03 + pidx),
+      mapper_.palette_read(0x3f00),
+      mapper_.palette_read(0x3f01 + pidx),
+      mapper_.palette_read(0x3f02 + pidx),
+      mapper_.palette_read(0x3f03 + pidx),
   };
 }
 
@@ -418,9 +419,9 @@ inline std::array<uint8_t, 4> PPU::spritePalette(uint8_t pidx) {
   pidx <<= 2;
   return {
       0,
-      readByte(0x3f11 + pidx),
-      readByte(0x3f12 + pidx),
-      readByte(0x3f13 + pidx),
+      mapper_.palette_read(0x3f11 + pidx),
+      mapper_.palette_read(0x3f12 + pidx),
+      mapper_.palette_read(0x3f13 + pidx),
   };
 }
 
@@ -428,59 +429,6 @@ void PPU::set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb) {
   int pi = y * WIDTH + x;
   if (pi < framebuf_.size()) {
     std::copy(std::begin(rgb), std::end(rgb), std::begin(framebuf_[pi]));
-  }
-}
-
-void PPU::tick() {
-  ++cycle_;
-  if (cycle_ == 341) {
-    ++scanline_;
-    cycle_ = 0;
-  }
-}
-
-void PPU::showPatternTable() {
-  uint8_t x = 0;
-  uint8_t y = 0;
-  for (int bank = 0; bank < 2; ++bank) {
-    for (int i = 0; i < 256; ++i) {
-      showTile(x, y, bank, i);
-      x += 8;
-      if (x == 0) {
-        y += 8;
-      }
-    }
-  }
-}
-
-void PPU::showTile(uint8_t x, uint8_t y, uint8_t bank, uint8_t tile) {
-  AddressT base = bank * 0x1000;
-  base += tile * 0x10;
-  for (int yi = y; yi < y + 8; ++yi) {
-    uint8_t lower = readByte(base);
-    uint8_t upper = readByte(base + 8);
-    for (int xi = x + 7; xi >= x; --xi) {
-      uint8_t pi = ((upper & 1) << 1) | (lower & 1);
-      upper >>= 1;
-      lower >>= 1;
-      // TODO(oren): these colors are totally arbitrary
-      // need to hook this up to the actual palette
-      switch (pi) {
-      case 0:
-        set_pixel(xi, yi, SystemPalette[0x01]);
-        break;
-      case 1:
-        set_pixel(xi, yi, SystemPalette[0x23]);
-        break;
-      case 2:
-        set_pixel(xi, yi, SystemPalette[0x27]);
-        break;
-      case 3:
-        set_pixel(xi, yi, SystemPalette[0x30]);
-        break;
-      }
-    }
-    ++base;
   }
 }
 

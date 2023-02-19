@@ -30,7 +30,7 @@ const instr::Instruction &NESDebugger::step(const instr::Instruction &in,
   }
 
   if (logging_ && log_stream_) {
-    log_stream_ << std::left << std::setw(50) << InstrToStr(in)
+    log_stream_ << std::left << std::setw(40) << InstrToStr(in) << CpuStateStr()
                 << " (C: " << in.issueCycle << ")\n";
   }
 
@@ -90,10 +90,10 @@ void NESDebugger::draw_nametable() {
 
         // palette fetch
         auto pidx = attr << 2;
-        palette[0] = ppu_read(0x3f00);
-        palette[1] = ppu_read(0x3f01 + pidx);
-        palette[2] = ppu_read(0x3f02 + pidx);
-        palette[3] = ppu_read(0x3f03 + pidx);
+        palette[0] = palette_read(0x3f00);
+        palette[1] = palette_read(0x3f01 + pidx);
+        palette[2] = palette_read(0x3f02 + pidx);
+        palette[3] = palette_read(0x3f03 + pidx);
       }
 
       // render pixel
@@ -125,10 +125,10 @@ void NESDebugger::draw_sprites() {
     uint8_t tile_idx = oam[sprite_base + 1];
     PPU::Sprite sprite = {.s = {.attrs.v = oam[sprite_base + 2]}};
     uint8_t pidx = sprite.s.attrs.s.palette_i;
-    palette[0] = ppu_read(0x3f00);
-    palette[1] = ppu_read(0x3f11 + pidx);
-    palette[2] = ppu_read(0x3f12 + pidx);
-    palette[3] = ppu_read(0x3f13 + pidx);
+    palette[0] = palette_read(0x3f00);
+    palette[1] = palette_read(0x3f11 + pidx);
+    palette[2] = palette_read(0x3f12 + pidx);
+    palette[3] = palette_read(0x3f13 + pidx);
     auto bank = console_.ppu_registers_.spritePTableAddr(tile_idx);
     if (sprite_size == 16) {
       tile_idx &= 0xFE;
@@ -161,10 +161,10 @@ void NESDebugger::draw_sprites() {
 void NESDebugger::draw_ptables() {
   //
   std::array<uint8_t, 4> palette = {
-      ppu_read(0x3f00),
-      ppu_read(0x3f01 + palette_idx()),
-      ppu_read(0x3f02 + palette_idx()),
-      ppu_read(0x3f03 + palette_idx()),
+      palette_read(0x3f00),
+      palette_read(0x3f01 + palette_idx()),
+      palette_read(0x3f02 + palette_idx()),
+      palette_read(0x3f03 + palette_idx()),
   };
   uint16_t horiz_off = 256 + 8;
   uint16_t vert_off = 0;
@@ -195,7 +195,7 @@ void NESDebugger::draw_palettes() {
   uint16_t vert_off = 128 + 48;
 
   for (int i = 0; i < 32; ++i) {
-    auto c = ppu_read(0x3f00 + i);
+    auto c = palette_read(0x3f00 + i);
     int x = (i & 0b1111) * 16 + horiz_off;
     int y = (i >> 4) * 16 + vert_off;
     for (int cx = 0; cx < 16; ++cx) {
@@ -253,7 +253,12 @@ uint8_t NESDebugger::ppu_read(uint16_t addr) {
 }
 
 uint8_t NESDebugger::cpu_read(uint16_t addr) {
-  return console_.mapper_->read(addr);
+  // debug flag to avoid affecting PPU registers
+  return console_.mapper_->read(addr, true);
+}
+
+uint8_t NESDebugger::palette_read(uint16_t addr) {
+  return console_.mapper_->palette_read(addr);
 }
 
 instr::Instruction NESDebugger::decode(AddressT offset) {
@@ -379,6 +384,17 @@ std::string NESDebugger::InstrToStr(const instr::Instruction &in) {
     break;
   }
 
+  return ss.str();
+}
+
+std::string NESDebugger::CpuStateStr() const {
+  std::stringstream ss;
+  ss << std::hex << "A: " << std::setw(2) << +console_.state().rA
+     << " X: " << std::setw(2) << +console_.state().rX << " Y: " << std::setw(2)
+     << +console_.state().rY
+     << " S: " << std::bitset<8>(console_.state().status)
+     << " PPU: " << std::dec << console_.currScanline() << ", "
+     << console_.currPpuCycle();
   return ss.str();
 }
 

@@ -20,9 +20,13 @@ public:
   using DataT = uint8_t;
   virtual ~NESMapper() = default;
   virtual void write(AddressT, DataT) = 0;
-  virtual DataT read(AddressT) = 0;
+  virtual DataT read(AddressT, bool dbg = false) = 0;
   virtual void ppu_write(AddressT, DataT) = 0;
   virtual DataT ppu_read(AddressT, bool dbg = false) = 0;
+  virtual DataT palette_read(AddressT) const = 0;
+  virtual void palette_write(AddressT, DataT) = 0;
+  virtual DataT oam_read(AddressT addr) const = 0;
+  virtual void oam_write(AddressT addr, DataT data) = 0;
   virtual uint8_t mirroring(void) const = 0;
   virtual bool setPpuABus(AddressT) = 0;
   virtual void tick(uint16_t) = 0;
@@ -81,11 +85,15 @@ public:
       static_cast<Derived *>(this)->cartWrite(addr, data);
     }
   }
-  DataT read(AddressT addr) override {
+  DataT read(AddressT addr, bool dbg = false) override {
     if (addr < 0x2000) {
       return internal_[addr & 0x7FF];
     } else if (addr < 0x4000) {
-      return ppu_reg_.read(CName(addr & 0x07), *this);
+      if (!dbg) {
+        return ppu_reg_.read(CName(addr & 0x07), *this);
+      } else {
+        return 0xFF;
+      }
     } else if (addr == 0x4016) {
       return joypad_.readNext();
     } else if (addr == 0x4017) {
@@ -105,18 +113,10 @@ public:
 
   void ppu_write(AddressT addr, DataT data) override {
     if (addr < 0x2000 && cart_.chrRamSize) {
-      // setPpuABus(addr);
       static_cast<Derived *>(this)->chrWrite(addr, data);
-    } else if (addr < 0x3F00) {
-      // setPpuABus(addr);
+    } else {
       addr = mirror_vram_addr(addr, static_cast<Derived *>(this)->mirroring());
       nametable_[addr] = data;
-    } else {
-      uint8_t idx = addr & 0x1F;
-      palette_[idx] = data;
-      if (idx % 4 == 0) {
-        palette_[idx ^ 0x10] = data;
-      }
     }
   }
 
@@ -126,22 +126,42 @@ public:
         setPpuABus(addr);
       }
       return static_cast<Derived *>(this)->chrRead(addr);
-    } else if (addr < 0x3F00) {
+    } else {
       addr = mirror_vram_addr(addr, static_cast<Derived *>(this)->mirroring());
       return nametable_[addr];
-    } else {
-      return palette_[addr & 0x1F];
     }
+  }
+
+  DataT palette_read(AddressT addr) const override {
+    return palette_[addr & 0x1F];
+  }
+  void palette_write(AddressT addr, DataT data) override {
+    uint8_t idx = addr & 0x1F;
+    palette_[idx] = data;
+    if (idx % 4 == 0) {
+      palette_[idx ^ 0x10] = data;
+    }
+  }
+
+  DataT oam_read(AddressT addr) const override {
+    assert(addr < ppu_oam_.size());
+    return ppu_oam_[addr];
+  }
+
+  void oam_write(AddressT addr, DataT data) override {
+    assert(addr < ppu_oam_.size());
+    ppu_oam_[addr] = data;
   }
 
 protected:
   unsigned long long m2_count_ = 0;
 
   void oamDma(AddressT base) {
-    uint8_t oam_base = ppu_reg_.oamAddr();
+    uint8_t oam_base = ppu_reg_.oamAddr() & (ppu_oam_.size() - 1);
     for (int i = 0; i < ppu_oam_.size(); ++i) {
-      assert(oam_base + i < ppu_oam_.size());
-      ppu_oam_[oam_base + i] = internal_[base | i];
+      auto idx = (oam_base + i) & (ppu_oam_.size() - 1);
+      assert(idx < ppu_oam_.size());
+      ppu_oam_[idx] = internal_[base | i];
     }
     ppu_reg_.signalOamDma();
   }

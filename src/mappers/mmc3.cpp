@@ -173,8 +173,6 @@ void MMC3::irqEnable(bool e) {
 
 bool MMC3::genIrq() {
   if (!pending_irq_) {
-    // std::cout << +console_.currScanline() << ": " << +console_.currPpuCycle()
-    //           << " assert IRQ" << std::endl;
     console_.irqPin() = true;
     pending_irq_ = true;
     return true;
@@ -194,6 +192,9 @@ void MMC3::tick(uint16_t c) {
     // stop the timer
     a12_state_.timer = 0;
     if (irqCounter_.reload(irqLatchVal_)) {
+      if (irqCounter_.val == 0 && irqEnabled_) {
+        genIrq();
+      }
       return;
     }
 

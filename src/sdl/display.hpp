@@ -102,7 +102,7 @@ public:
   bool hasMouseFocus() { return mouse_focus; }
   bool isShown() { return shown; }
 
-  unsigned long long frames() { return frames_; }
+  unsigned long frames() { return frames_; }
 
   std::array<std::array<uint8_t, 3>, W *H> renderBuf = {};
 
@@ -116,6 +116,6 @@ private:
   bool keyboard_focus;
   bool shown;
   bool minimized;
-  unsigned long long frames_ = 0;
+  unsigned long frames_ = 0;
 };
 } // namespace sdl_internal

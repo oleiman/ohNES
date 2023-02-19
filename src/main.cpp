@@ -50,6 +50,7 @@ int main(int argc, char **argv) {
   }
 
   NES nes(file);
+  // nes.debug_ = true;
   std::unique_ptr<DebuggerApp> debug_app = std::make_unique<DebuggerApp>(nes);
 
   LoadSystemPalette(DEFAULT_PALETTE);
@@ -63,6 +64,8 @@ int main(int argc, char **argv) {
   {
 
     std::unique_ptr<Display<sys::DBG_W, sys::DBG_H>> debug_display = nullptr;
+    // debug_display = std::make_unique<Display<sys::DBG_W, sys::DBG_H>>(
+    //     "DBG", "Debug: " + file);
 
     auto display =
         std::make_unique<Display<vid::WIDTH, vid::HEIGHT, SCALE>>("NES", file);
@@ -89,6 +92,8 @@ int main(int argc, char **argv) {
             display->focus();
             break;
           case SDLK_d:
+            // TODO(oren): do this initialization elsewhere, D should just flip
+            // the flag
             if (debug_display == nullptr) {
               debug_display = std::make_unique<Display<sys::DBG_W, sys::DBG_H>>(
                   "DBG", "Debug: " + file);
