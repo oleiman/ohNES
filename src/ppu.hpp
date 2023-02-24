@@ -80,12 +80,13 @@ private:
   void handleSprites(bool pre_render);
 
   void vBlankLine();
-  void set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb);
+  void set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> rgb);
   std::array<uint8_t, 4> bgPalette();
   std::array<uint8_t, 4> spritePalette(uint8_t pidx);
 
   void renderBgPixel(int abs_x, int abs_y);
   void renderSpritePixel(int abs_x, int abs_y);
+  void directColorControl();
   void clearOam();
   void evaluateSprites();
   void fetchSprites_old();

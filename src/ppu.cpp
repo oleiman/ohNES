@@ -375,8 +375,22 @@ void PPU::renderSpritePixel(int abs_x, int abs_y) {
   }
 }
 
+// Direct color control
+// see https://www.nesdev.org/wiki/Full_palette_demo
+void PPU::directColorControl() {
+  auto addr = registers_.vRamAddr();
+  int dot_y = registers_.scanline();
+  int dot_x = registers_.cycle() - 1;
+  if (dot_y < 240 && dot_x < 256 && 0x3F00 <= addr && addr < 0x4000) {
+    auto c = mapper_.palette_read(addr) & 0x3F;
+    set_pixel(dot_x, dot_y, SystemPalette[c]);
+  }
+}
+
 void PPU::vBlankLine() {
   bool odd = registers_.cycle() & 0x01;
+
+  directColorControl();
 
   // TODO(oren): service CPU memory requests
   // again only on odd cycles to account for 2-cycle cost. may need to look
@@ -390,8 +404,8 @@ void PPU::vBlankLine() {
       auto data = registers_.getData();
       writeByte(addr, data);
     }
-    mapper_.setPpuABus(registers_.vRamAddr());
   }
+  mapper_.setPpuABus(registers_.vRamAddr());
 }
 
 bool PPU::rendering() {
@@ -425,8 +439,31 @@ inline std::array<uint8_t, 4> PPU::spritePalette(uint8_t pidx) {
   };
 }
 
-void PPU::set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> const &rgb) {
+void PPU::set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> rgb) {
   int pi = y * WIDTH + x;
+
+  std::array<int, 3> emph = {
+      registers_.emphasizeRed() ? 1 : 0,
+      registers_.emphasizeGreen() ? 1 : 0,
+      registers_.emphasizeBlue() ? 1 : 0,
+  };
+
+  constexpr int amt = 16;
+
+  for (int i = 0; i < rgb.size(); ++i) {
+    int16_t val = static_cast<int16_t>(rgb[i]);
+    for (int j = 0; j < emph.size(); ++j) {
+      if (j == i) {
+        val += amt * emph[j];
+        val = std::min(val, static_cast<int16_t>(0xFF));
+      } else {
+        val -= amt * emph[j];
+        val = std::max(val, static_cast<int16_t>(0));
+      }
+    }
+    rgb[i] = static_cast<uint8_t>(val);
+  }
+
   if (pi < framebuf_.size()) {
     std::copy(std::begin(rgb), std::end(rgb), std::begin(framebuf_[pi]));
   }

@@ -173,6 +173,10 @@ void MMC3::irqEnable(bool e) {
 
 bool MMC3::genIrq() {
   if (!pending_irq_) {
+
+    // std::cout << console_.currScanline() << ",  " << console_.currPpuCycle()
+    //           << std::endl;
+
     console_.irqPin() = true;
     pending_irq_ = true;
     return true;
@@ -188,7 +192,7 @@ void MMC3::tick(uint16_t c) {
 
   unsigned long long time_since_change = m2_count_ - a12_state_.timer;
 
-  if (a12_state_.state == A12_STATE::HIGH && time_since_change == 3) {
+  if (a12_state_.state == A12_STATE::HIGH && time_since_change == 2) {
     // stop the timer
     a12_state_.timer = 0;
     if (irqCounter_.reload(irqLatchVal_)) {
