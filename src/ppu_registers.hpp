@@ -1,6 +1,8 @@
 #pragma once
 
 #include "dbg/nes_debugger.hpp"
+#include "util.hpp"
+
 #include <array>
 #include <assert.h>
 #include <cstdint>
@@ -21,14 +23,6 @@ class NESDebugger;
 namespace vid {
 
 class Registers {
-  static constexpr uint8_t BIT0 = 0b00000001;
-  static constexpr uint8_t BIT1 = 0b00000010;
-  static constexpr uint8_t BIT2 = 0b00000100;
-  static constexpr uint8_t BIT3 = 0b00001000;
-  static constexpr uint8_t BIT4 = 0b00010000;
-  static constexpr uint8_t BIT5 = 0b00100000;
-  static constexpr uint8_t BIT6 = 0b01000000;
-  static constexpr uint8_t BIT7 = 0b10000000;
 
 public:
   enum CName {
@@ -201,48 +195,55 @@ private:
 inline uint16_t Registers::baseNametableAddr() { return BaseNTAddr[V.NN]; }
 
 inline uint8_t Registers::vRamAddrInc() {
-  uint8_t i = (regs_[PPUCTRL] & BIT2) >> 2;
+  uint8_t i = (regs_[PPUCTRL] & util::BIT2) >> 2;
   return VRamAddrInc[i];
 }
 
 inline uint16_t Registers::spritePTableAddr(uint8_t idx) {
-  uint8_t i = (spriteSize() == 8 ? (regs_[PPUCTRL] & BIT3) >> 3 : idx & 0b1);
+  uint8_t i =
+      (spriteSize() == 8 ? (regs_[PPUCTRL] & util::BIT3) >> 3 : idx & 0b1);
   return PTableAddr[i];
 }
 
 inline uint16_t Registers::backgroundPTableAddr() {
-  uint8_t i = (regs_[PPUCTRL] & BIT4) >> 4;
+  uint8_t i = (regs_[PPUCTRL] & util::BIT4) >> 4;
   return PTableAddr[i];
 }
 
 inline uint8_t Registers::spriteSize() {
-  uint8_t i = (regs_[PPUCTRL] & BIT5) >> 5;
+  uint8_t i = (regs_[PPUCTRL] & util::BIT5) >> 5;
   return SpriteSize[i];
 }
 
-inline bool Registers::ppuMasterSlave() { return regs_[PPUCTRL] & BIT6; }
+inline bool Registers::ppuMasterSlave() { return regs_[PPUCTRL] & util::BIT6; }
 
-inline bool Registers::vBlankNMI() { return regs_[PPUCTRL] & BIT7; }
+inline bool Registers::vBlankNMI() { return regs_[PPUCTRL] & util::BIT7; }
 
-inline bool Registers::grayscale() { return regs_[PPUMASK] & BIT0; }
-inline bool Registers::showBackgroundLeft8() { return regs_[PPUMASK] & BIT1; }
-inline bool Registers::showSpritesLeft8() { return regs_[PPUMASK] & BIT2; }
-inline bool Registers::showBackground() { return regs_[PPUMASK] & BIT3; }
-inline bool Registers::showSprites() { return regs_[PPUMASK] & BIT4; }
-inline bool Registers::emphasizeRed() { return regs_[PPUMASK] & BIT5; }
-inline bool Registers::emphasizeGreen() { return regs_[PPUMASK] & BIT6; }
-inline bool Registers::emphasizeBlue() { return regs_[PPUMASK] & BIT7; }
+inline bool Registers::grayscale() { return regs_[PPUMASK] & util::BIT0; }
+inline bool Registers::showBackgroundLeft8() {
+  return regs_[PPUMASK] & util::BIT1;
+}
+inline bool Registers::showSpritesLeft8() {
+  return regs_[PPUMASK] & util::BIT2;
+}
+inline bool Registers::showBackground() { return regs_[PPUMASK] & util::BIT3; }
+inline bool Registers::showSprites() { return regs_[PPUMASK] & util::BIT4; }
+inline bool Registers::emphasizeRed() { return regs_[PPUMASK] & util::BIT5; }
+inline bool Registers::emphasizeGreen() { return regs_[PPUMASK] & util::BIT6; }
+inline bool Registers::emphasizeBlue() { return regs_[PPUMASK] & util::BIT7; }
 
-inline bool Registers::spriteOverflow() { return regs_[PPUSTATUS] & BIT5; }
-inline bool Registers::spriteZeroHit() { return regs_[PPUSTATUS] & BIT6; }
+inline bool Registers::spriteOverflow() {
+  return regs_[PPUSTATUS] & util::BIT5;
+}
+inline bool Registers::spriteZeroHit() { return regs_[PPUSTATUS] & util::BIT6; }
 inline void Registers::setSpriteZeroHit(bool val) {
   // if the new and current values differ, flip the appropriate bit
-  regs_[PPUSTATUS] &= ~BIT6;
+  regs_[PPUSTATUS] &= ~util::BIT6;
   if (val) {
-    regs_[PPUSTATUS] |= BIT6;
+    regs_[PPUSTATUS] |= util::BIT6;
   }
 }
-inline bool Registers::vBlankStarted() { return regs_[PPUSTATUS] & BIT7; }
+inline bool Registers::vBlankStarted() { return regs_[PPUSTATUS] & util::BIT7; }
 
 inline uint8_t Registers::oamAddr() { return regs_[OAMADDR]; }
 inline uint8_t Registers::oamData() { return regs_[OAMDATA]; }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "apu_registers.hpp"
 #include "cartridge.hpp"
 #include "joypad.hpp"
 #include "mappers/base_mapper.hpp"
@@ -17,8 +18,8 @@ namespace mapper {
 class MMC2 : public NESMapperBase<MMC2> {
 public:
   MMC2(sys::NES &console, cart::Cartridge const &c, vid::Registers &reg,
-       std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
-      : NESMapperBase<MMC2>(console, c, reg, oam, pad) {}
+       aud::Registers &areg, std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
+      : NESMapperBase<MMC2>(console, c, reg, areg, oam, pad) {}
 
   void cartWrite(AddressT addr, DataT data);
   DataT cartRead(AddressT addr);

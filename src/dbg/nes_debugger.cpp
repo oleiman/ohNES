@@ -398,4 +398,8 @@ std::string NESDebugger::CpuStateStr() const {
   return ss.str();
 }
 
+void NESDebugger::muteApuChannel(int cid, bool e) {
+  console_.apu_.mute(cid, e);
+}
+
 } // namespace sys

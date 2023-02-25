@@ -1,5 +1,6 @@
 #pragma once
 
+#include "apu_registers.hpp"
 #include "cartridge.hpp"
 #include "joypad.hpp"
 #include "memory.hpp"
@@ -35,12 +36,14 @@ public:
 template <class Derived> class NESMapperBase : public NESMapper {
 public:
   using CName = vid::Registers::CName;
+  using AudCName = aud::Registers::CName;
 
 protected:
   sys::NES &console_;
   cart::Cartridge const &cart_;
   std::array<DataT, 0x800> internal_{};
   vid::Registers &ppu_reg_;
+  aud::Registers &apu_reg_;
   std::array<DataT, 0x100> &ppu_oam_;
   std::array<DataT, 0x800> nametable_{};
   std::array<DataT, 32> palette_;
@@ -50,10 +53,10 @@ protected:
 
 public:
   NESMapperBase(sys::NES &console, cart::Cartridge const &c,
-                vid::Registers &reg, std::array<DataT, 0x100> &oam,
-                ctrl::JoyPad &pad)
-      : console_(console), cart_(c), ppu_reg_(reg), ppu_oam_(oam),
-        joypad_(pad) {}
+                vid::Registers &reg, aud::Registers &areg,
+                std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
+      : console_(console), cart_(c), ppu_reg_(reg), apu_reg_(areg),
+        ppu_oam_(oam), joypad_(pad) {}
   virtual ~NESMapperBase() = default;
 
   virtual uint8_t mirroring() const override { return cart_.mirroring; }
@@ -74,10 +77,17 @@ public:
       oamDma(static_cast<AddressT>(data) << 8);
     } else if (addr == 0x4016) {
       joypad_.toggleStrobe();
-    } else if (addr == 0x4017) {
-      // TODO(oren): controller 2
+      // } else if (addr == 0x4017) {
+      //   // TODO(oren): controller 2
+    } else if (addr < 0x4018) {
+      if (addr != 0x4017) {
+        // std::cout << std::hex << addr << std::dec << " " <<
+        // std::bitset<8>(data)
+        //           << std::endl;
+      }
+      apu_reg_.write(AudCName(addr & 0x1F), data, *this);
     } else if (addr < 0x4020) {
-      // TODO(oren): APU and more I/O
+      // some other i/o?
     } else if (addr < 0x6000) {
       // TODO(oren); not yet implemented, rarely used, see docs
     } else {
@@ -96,12 +106,11 @@ public:
       }
     } else if (addr == 0x4016) {
       return joypad_.readNext();
-    } else if (addr == 0x4017) {
-      // TODO(oren): controller 2
-      return 0;
-    } else if (addr < 0x4020) {
-      // TODO(oren): APU and more I/O
-      return 0;
+      // } else if (addr == 0x4017) {
+      //   // TODO(oren): controller 2
+      //   return 0;
+    } else if (addr < 0x4018) {
+      return apu_reg_.read(AudCName(addr & 0x1F), *this);
     } else if (addr < 0x6000) {
       // TODO(OREN): rarely used, see docs
       return 0;

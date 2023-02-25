@@ -35,6 +35,10 @@ wxBEGIN_EVENT_TABLE(DebuggerFrame, wxFrame)
   EVT_BUTTON(constants::BUTTON_LOG_STOP, DebuggerFrame::OnLogStop)
   EVT_BUTTON(constants::BUTTON_SET_BP, DebuggerFrame::OnSetBreakpoint)
   EVT_BUTTON(constants::BUTTON_DISABLE_BP, DebuggerFrame::OnDisableBreakpoint)
+  EVT_CHECKBOX(constants::MUTE_P1, DebuggerFrame::OnMutePulse1)
+  EVT_CHECKBOX(constants::MUTE_P2, DebuggerFrame::OnMutePulse2)
+  EVT_CHECKBOX(constants::MUTE_TR, DebuggerFrame::OnMuteTriangle)
+  EVT_CHECKBOX(constants::MUTE_NS, DebuggerFrame::OnMuteNoise)
 wxEND_EVENT_TABLE();
 // clang-format on
 
@@ -141,6 +145,19 @@ DebuggerFrame::DebuggerFrame() : wxFrame(NULL, wxID_ANY, "ohNES CPU debugger") {
                         wxSizerFlags(1).Expand().Border(wxALL, 7));
   sizerCPUStateWin->Add(_bp_list, wxSizerFlags(1).Expand().Border(wxALL, 7));
 
+  wxBoxSizer *muteBoxSizer = new wxBoxSizer(wxVERTICAL);
+  muteBoxSizer->Add(new wxCheckBox(p, constants::MUTE_P1, "Mute Pulse 1"),
+                    wxSizerFlags().Border(wxALL, 7));
+  muteBoxSizer->Add(new wxCheckBox(p, constants::MUTE_P2, "Mute Pulse 2"),
+                    wxSizerFlags().Border(wxALL, 7));
+  muteBoxSizer->Add(new wxCheckBox(p, constants::MUTE_TR, "Mute Triangle"),
+                    wxSizerFlags().Border(wxALL, 7));
+  muteBoxSizer->Add(new wxCheckBox(p, constants::MUTE_NS, "Mute Noise"),
+                    wxSizerFlags().Border(wxALL, 7));
+
+  sizerCPUStateWin->Add(muteBoxSizer,
+                        wxSizerFlags(1).Expand().Border(wxALL, 7));
+
   sizerScrollWin->Add(sizerCPUStateWin, wxSizerFlags(1).Expand());
 
   topsizer->Add(sizerScrollWin, wxSizerFlags(1).Expand());
@@ -200,6 +217,19 @@ void DebuggerFrame::OnDisableBreakpoint(wxCommandEvent &event) {
     _console->debugger().disableBreakpoint(i);
   }
   Refresh();
+}
+
+void DebuggerFrame::OnMutePulse1(wxCommandEvent &event) {
+  _console->debugger().muteApuChannel(0, event.IsChecked());
+}
+void DebuggerFrame::OnMutePulse2(wxCommandEvent &event) {
+  _console->debugger().muteApuChannel(1, event.IsChecked());
+}
+void DebuggerFrame::OnMuteTriangle(wxCommandEvent &event) {
+  _console->debugger().muteApuChannel(2, event.IsChecked());
+}
+void DebuggerFrame::OnMuteNoise(wxCommandEvent &event) {
+  _console->debugger().muteApuChannel(3, event.IsChecked());
 }
 
 void TraceScrollWindow::OnDraw(wxDC &dc) {

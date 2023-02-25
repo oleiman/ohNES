@@ -16,6 +16,7 @@ add_executable(ohNES
   src/main.cpp
   src/system.cpp
   src/ppu_registers.cpp
+  src/apu_registers.cpp
   src/cartridge.cpp
   src/mappers/cnrom.cpp
   src/mappers/color_dreams.cpp
@@ -25,8 +26,10 @@ add_executable(ohNES
   src/mappers/mmc2.cpp
   src/mappers/mmc3.cpp
   src/mappers/mapper_factory.cpp
+  src/sdl/audio.cpp
   src/dbg/nes_debugger.cpp
   src/ppu.cpp
+  src/apu.cpp
   src/joypad.cpp
   src/util.cpp
   src/wx_/dbg_app.cpp

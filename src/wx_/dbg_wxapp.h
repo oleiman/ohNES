@@ -53,6 +53,25 @@ private:
   sys::NES *console;
 };
 
+// class ChannelMutes : public wxWindow {
+// public:
+//   ChannelMutes(wxWindow *parent)
+//       : wxWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+//                  wxBORDER_SUNKEN) {
+//     SetFont(wxFontInfo(14).Family(wxFONTFAMILY_TELETYPE));
+
+//     // wxClientDC dc(this);
+//     // dc.GetTextExtent("NOP", NULL, &line_height);
+//     mP1 = new wxCheckBox(this, wxID_ANY
+//   }
+
+// private:
+//   wxCheckBox *mP1;
+//   wxCheckBox *mP2;
+//   wxCheckBox *mTr;
+//   wxCheckBox *mNs;
+// };
+
 class CPUStateText : public wxStaticText {
 public:
   CPUStateText(wxWindow *parent, const std::string &label)
@@ -112,6 +131,10 @@ public:
   void OnLogStop(wxCommandEvent &event);
   void OnSetBreakpoint(wxCommandEvent &event);
   void OnDisableBreakpoint(wxCommandEvent &event);
+  void OnMutePulse1(wxCommandEvent &event);
+  void OnMutePulse2(wxCommandEvent &event);
+  void OnMuteTriangle(wxCommandEvent &event);
+  void OnMuteNoise(wxCommandEvent &event);
 
   void SetConsole(sys::NES *console) {
     _console = console;
@@ -162,6 +185,10 @@ enum {
   BUTTON_LOG_STOP,
   BUTTON_SET_BP,
   BUTTON_DISABLE_BP,
+  MUTE_P1,
+  MUTE_P2,
+  MUTE_TR,
+  MUTE_NS,
   TABLE_PAINT,
   QUIT = wxID_EXIT,
   ABOUT = wxID_ABOUT,

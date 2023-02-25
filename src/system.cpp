@@ -13,12 +13,13 @@ using mapper::MapperFactory;
 namespace sys {
 NES::NES(std::string_view const &romfile, bool debug)
     : debug_(debug), cartridge_(romfile),
-      mapper_(
-          MapperFactory(*this, cartridge_, ppu_registers_, ppu_oam_, joypad_1)),
-      ppu_(*mapper_, ppu_registers_, ppu_oam_), cpu_(*mapper_, false),
-      debugger_(*this) {
+      mapper_(MapperFactory(*this, cartridge_, ppu_registers_, apu_registers_,
+                            ppu_oam_, joypad_1)),
+      ppu_(*mapper_, ppu_registers_, ppu_oam_), apu_(*mapper_, apu_registers_),
+      cpu_(*mapper_, false), debugger_(*this) {
   cpu_.registerTickHandler(std::bind(&NES::ppuTick, this));
   cpu_.registerTickHandler(std::bind(&NES::mapperTick, this));
+  cpu_.registerTickHandler(std::bind(&NES::apuTick, this));
   cpu_.reset();
   std::cerr << cartridge_ << std::endl;
 }

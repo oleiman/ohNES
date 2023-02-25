@@ -1,5 +1,6 @@
 #pragma once
 
+#include "apu_registers.hpp"
 #include "cartridge.hpp"
 #include "joypad.hpp"
 #include "mappers/base_mapper.hpp"
@@ -16,5 +17,6 @@ namespace mapper {
 
 std::unique_ptr<mapper::NESMapper>
 MapperFactory(sys::NES &console, cart::Cartridge const &c, vid::Registers &reg,
-              std::array<uint8_t, 0x100> &oam, ctrl::JoyPad &pad);
+              aud::Registers &areg, std::array<uint8_t, 0x100> &oam,
+              ctrl::JoyPad &pad);
 }

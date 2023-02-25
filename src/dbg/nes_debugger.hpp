@@ -90,6 +90,8 @@ public:
     return breakpoints_;
   }
 
+  void muteApuChannel(int cid, bool e);
+
 private:
   void setMode(Mode s) { dbg_mode = s; }
   void set_pixel(int x, int y, std::array<uint8_t, 3> const &rgb);

@@ -1,3 +1,4 @@
+#include "apu_registers.hpp"
 #include "cartridge.hpp"
 #include "joypad.hpp"
 #include "mappers/base_mapper.hpp"
@@ -15,8 +16,8 @@ namespace mapper {
 class MMC3 : public NESMapperBase<MMC3> {
 public:
   MMC3(sys::NES &console, cart::Cartridge const &c, vid::Registers &reg,
-       std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
-      : NESMapperBase<MMC3>(console, c, reg, oam, pad),
+       aud::Registers &areg, std::array<DataT, 0x100> &oam, ctrl::JoyPad &pad)
+      : NESMapperBase<MMC3>(console, c, reg, areg, oam, pad),
         mirroring_(cart_.mirroring ^ 0b1) {}
 
   void cartWrite(AddressT addr, DataT data);

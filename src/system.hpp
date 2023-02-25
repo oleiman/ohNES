@@ -1,5 +1,6 @@
 #pragma once
 
+#include "apu.hpp"
 #include "cartridge.hpp"
 #include "cpu.hpp"
 #include "dbg/nes_debugger.hpp"
@@ -36,12 +37,15 @@ public:
 private:
   void ppuTick() { ppu_.step(3 + ppu_registers_.oamCycles(), cpu_.nmiPin()); }
   void mapperTick() { mapper_->tick(1); }
+  void apuTick() { apu_.step(cpu_.irqPin()); }
 
   cart::Cartridge cartridge_;
   vid::Registers ppu_registers_;
+  aud::Registers apu_registers_;
   std::array<uint8_t, 256> ppu_oam_ = {};
   std::unique_ptr<mapper::NESMapper> mapper_;
   vid::PPU ppu_;
+  aud::APU apu_;
   cpu::M6502 cpu_;
   NESDebugger debugger_;
 

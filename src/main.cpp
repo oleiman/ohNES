@@ -1,5 +1,6 @@
 #include "dbg/nes_debugger.hpp"
 #include "ppu.hpp"
+#include "sdl/audio.hpp"
 #include "sdl/display.hpp"
 #include "sdl/pad_maps.hpp"
 #include "system.hpp"
@@ -18,6 +19,7 @@
 using vid::LoadSystemPalette;
 
 using dbg::DebuggerApp;
+using sdl_internal::Audio;
 using sdl_internal::Display;
 using sdl_internal::Kbd2JoyPad;
 using sys::NES;
@@ -55,7 +57,7 @@ int main(int argc, char **argv) {
 
   LoadSystemPalette(DEFAULT_PALETTE);
 
-  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "SDL_Init Error",
                              SDL_GetError(), NULL);
     SDL_Delay(2000);
@@ -64,11 +66,12 @@ int main(int argc, char **argv) {
   {
 
     std::unique_ptr<Display<sys::DBG_W, sys::DBG_H>> debug_display = nullptr;
-    // debug_display = std::make_unique<Display<sys::DBG_W, sys::DBG_H>>(
-    //     "DBG", "Debug: " + file);
 
     auto display =
         std::make_unique<Display<vid::WIDTH, vid::HEIGHT, SCALE>>("NES", file);
+
+    auto audio = std::make_unique<Audio>();
+    audio->init();
 
     SDL_Event event;
     bool quit = false;

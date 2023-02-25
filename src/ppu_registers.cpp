@@ -152,7 +152,7 @@ void Registers::tick() {
 
 bool Registers::setVBlankStarted() {
   if (!suppress_vblank_) {
-    regs_[PPUSTATUS] |= BIT7;
+    regs_[PPUSTATUS] |= util::BIT7;
     return true;
   } else {
     return false;
@@ -173,7 +173,7 @@ bool Registers::isFrameReady() {
 }
 
 void Registers::clearVBlankStarted() {
-  regs_[PPUSTATUS] &= ~BIT7;
+  regs_[PPUSTATUS] &= ~util::BIT7;
   // clear any pending NMI if VBL ends
   nmi_pending_ = false;
   if (scanline_ == 241 && (0 < cycle_ && cycle_ <= 3)) {
