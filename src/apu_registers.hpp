@@ -68,6 +68,13 @@ public:
   bool p2Enable() const { return status_reg_ & util::BIT1; }
   bool trEnable() const { return status_reg_ & util::BIT2; }
   bool nsEnable() const { return status_reg_ & util::BIT3; }
+  bool dmcEnable() const { return status_reg_ & util::BIT4; }
+
+  bool dmcEnableChange() {
+    auto tmp = dmc_en_changed;
+    dmc_en_changed = false;
+    return tmp;
+  }
 
   bool p1EnvStart() {
     auto tmp = p1_env_start;
@@ -207,6 +214,28 @@ public:
 
   void setFcStatus(uint8_t s) { fc_status_ = s; }
 
+  bool dmcInterruptEnable() const {
+    return generator_regs[DMC_CTRL] & util::BIT7;
+  }
+  bool dmcLoop() const { return generator_regs[DMC_CTRL] & util::BIT6; }
+  uint16_t dmcRate() const {
+    return DMCRateTable[generator_regs[DMC_CTRL] & 0b1111];
+  }
+  uint8_t dmcDirectLoad() {
+    if (dmc_direct_load) {
+      dmc_direct_load = false;
+      return generator_regs[DMC_LOAD] & 0x7F;
+    } else {
+      return 0xFF;
+    }
+  }
+  uint16_t dmcSampleAddress() const {
+    return 0xC000 + (static_cast<uint16_t>(generator_regs[DMC_ADDR]) << 6);
+  }
+  uint16_t dmcSampleLength() const {
+    return (static_cast<uint16_t>(generator_regs[DMC_LEN]) << 4) + 1;
+  }
+
 private:
   double calc_duty_cycle(uint8_t val) const;
 
@@ -226,6 +255,9 @@ private:
   bool tr_load_pending = true;
   bool tr_lin_load_pending = true;
   bool ns_load_pending = true;
+  bool dmc_en_changed = false;
+
+  bool dmc_direct_load = false;
 
   bool p1_sweep_reload = false;
   bool p2_sweep_reload = false;
@@ -233,6 +265,11 @@ private:
   bool p1_env_start = false;
   bool p2_env_start = false;
   bool ns_env_start = false;
+
+  static constexpr std::array<uint16_t, 0x10> DMCRateTable = {
+      428, 380, 340, 320, 286, 254, 226, 214,
+      190, 160, 142, 128, 106, 84,  72,  54,
+  };
 };
 
 } // namespace aud

@@ -5,16 +5,21 @@ namespace aud {
 
 void APU::step(bool &irq) {
 
-  frame_counter_.inc(channels_, registers_);
+  frame_counter_.inc(channels_, *dmc_unit_, registers_);
 
   // NOTE(oren): actually setting the IRQ here produces weird behavior
   // not really sure how this should be treated
   // irq = frame_counter_.frameInterrupt();
 
-  registers_.setFcStatus(frame_counter_.status(channels_));
+  registers_.setFcStatus(frame_counter_.status(channels_, *dmc_unit_));
+
+  // if (frame_counter_.dmcInterrupt()) {
+  //   irq = true;
+  // }
 }
 
-void FrameCounter::inc(Channels &channels, aud::Registers &regs) {
+void FrameCounter::inc(Channels &channels, DMC &dmc_unit,
+                       aud::Registers &regs) {
 
   // configure sound generators
 
@@ -26,6 +31,15 @@ void FrameCounter::inc(Channels &channels, aud::Registers &regs) {
 
   for (auto &[id, chan] : channels) {
     chan->config();
+  }
+
+  if (regs.dmcEnableChange()) {
+    dmc_unit.config();
+    dmc_interrupt_ = false;
+  }
+
+  if (!regs.dmcInterruptEnable()) {
+    dmc_interrupt_ = false;
   }
 
   if (regs.reset()) {
@@ -50,6 +64,10 @@ void FrameCounter::inc(Channels &channels, aud::Registers &regs) {
         (seq_.mode() == Sequencer::Mode::M1 && counter_ == 18641)) {
       counter_ = 0;
     }
+
+    if (dmc_unit.step() && regs.dmcInterruptEnable()) {
+      dmc_interrupt_ = true;
+    }
   } else {
     seq_.clock(channels);
   }
@@ -61,19 +79,27 @@ void FrameCounter::inc(Channels &channels, aud::Registers &regs) {
   }
 }
 
-uint8_t FrameCounter::status(const Channels &channels) const {
+uint8_t FrameCounter::status(const Channels &channels,
+                             const DMC &dmc_unit) const {
   uint8_t result = 0;
+  if (dmc_interrupt_) {
+    result |= util::BIT7;
+  }
+
   if (frame_interrupt_.status) {
     result |= util::BIT6;
   }
-  // if (dmc_interrupt_) {
-  //   result |= util::BIT7;
-  // }
+
   for (const auto &[id, chan] : channels) {
     if (chan->checkLc() && id != Channel::Id::DMC) {
       result |= (0b1 << static_cast<uint8_t>(id));
     }
   }
+
+  if (dmc_unit.bytesRemaining()) {
+    result |= 0b1 << 4;
+  }
+
   return result;
 }
 
@@ -170,8 +196,6 @@ void Sweep::tick(uint16_t curr_period, int carry) {
       amt = -amt + carry;
     }
 
-    // std::cout << amt << std::endl;
-
     change_amt_ += amt;
   }
 
@@ -198,9 +222,16 @@ double Channel::calc_freq(uint16_t period, uint32_t m) const {
   return cpu_freq / (m * (period + 1));
 }
 
+double DMC::calc_freq(uint16_t period) const {
+  static double cpu_freq = 1.789773e6;
+  return cpu_freq / period;
+}
+
 std::array<uint8_t, 0x20> LengthCounter::LengthTable = {
     10, 254, 20, 2,  40, 4,  80, 6,  160, 8,  60, 10, 14, 12, 26, 14, // 00-0F
     12, 16,  24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30, // 10-1F
 };
+
+// const std::array<double, 0x10> DMC::PeriodTable;
 
 } // namespace aud

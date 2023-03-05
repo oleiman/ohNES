@@ -258,6 +258,178 @@ private:
 
 using Channels = std::unordered_map<Channel::Id, std::unique_ptr<Channel>>;
 
+struct SampleBuffer {
+  SampleBuffer(mapper::NESMapper &mapper, Registers &regs)
+      : mapper_(mapper), regs_(regs) {}
+
+  void enable() {
+    if (bytes_remaining_ == 0) {
+      sample_base_addr_ = curr_addr_ = regs_.dmcSampleAddress();
+      sample_len_ = bytes_remaining_ = regs_.dmcSampleLength();
+      sample_load_ = true;
+      fill();
+    }
+  }
+
+  void disable() { bytes_remaining_ = 0; }
+  bool empty() const { return empty_; }
+  uint16_t bytesRemaining() const { return bytes_remaining_; }
+
+  uint8_t get() {
+    assert(!empty_);
+    auto val = buf_;
+    if (sample_load_) {
+      is_first_byte_ = true;
+      sample_load_ = false;
+    }
+    fill();
+    return val;
+  }
+
+  bool isFirst() {
+    auto tmp = is_first_byte_;
+    is_first_byte_ = false;
+    return tmp;
+  }
+
+private:
+  void fill() {
+    if (bytes_remaining_ > 0) {
+      empty_ = false;
+      buf_ = mapper_.read(curr_addr_);
+      if (curr_addr_ == 0xFFFF) {
+        curr_addr_ = 0x8000;
+      } else {
+        ++curr_addr_;
+      }
+      --bytes_remaining_;
+      if (bytes_remaining_ == 0 && regs_.dmcLoop()) {
+        curr_addr_ = regs_.dmcSampleAddress();
+        bytes_remaining_ = regs_.dmcSampleLength();
+        sample_load_ = true;
+      }
+    } else {
+      empty_ = true;
+    }
+  }
+
+  mapper::NESMapper &mapper_;
+  Registers &regs_;
+  uint8_t buf_ = 0;
+  uint16_t sample_base_addr_;
+  uint16_t sample_len_;
+  uint16_t curr_addr_;
+  uint8_t bytes_remaining_ = 0;
+  bool empty_ = true;
+  bool sample_load_ = false;
+  bool is_first_byte_ = false;
+};
+
+struct SampleOutput {
+  SampleOutput() {}
+
+  uint8_t clock(SampleBuffer &sbuf) {
+    if (!silence_) {
+      uint8_t l = shift_register_ & 0b1;
+      if (l && output_level_ <= 125) {
+        output_level_ += 2;
+      } else if (!l && output_level_ >= 2) {
+        output_level_ -= 2;
+      }
+    }
+    shift_register_ >>= 1;
+    --bits_remaining_;
+    if (bits_remaining_ == 0) {
+      start_cycle(sbuf);
+    }
+    return (silence_ ? 0 : output_level_);
+  }
+
+  void setLevel(uint8_t lvl) {
+    if (lvl < 0xFF) {
+      level_setting_ = lvl;
+      output_level_ = lvl;
+    }
+  }
+
+private:
+  void start_cycle(SampleBuffer &sbuf) {
+    silence_ = sbuf.empty();
+    if (!silence_) {
+      shift_register_ = sbuf.get();
+      if (sbuf.isFirst()) {
+        output_level_ = 0;
+      }
+    }
+    bits_remaining_ = 8;
+  }
+  uint8_t shift_register_ = 0;
+  uint8_t output_level_ = 0;
+  uint8_t level_setting_ = 0;
+  uint8_t bits_remaining_ = 8;
+  bool silence_ = true;
+};
+
+struct SampleTimer {
+
+  void setPeriod(uint16_t per) { period_ = (per >> 1); }
+  uint16_t period() { return (period_ << 1); }
+
+  bool tick() {
+    ++counter_;
+    if (counter_ >= period_) {
+      counter_ = 0;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+private:
+  uint16_t counter_ = 0;
+  uint16_t period_;
+};
+
+class DMC {
+public:
+  DMC(sdl_internal::DMC &gen, Registers &regs, mapper::NESMapper &mapper)
+      : gen_(gen), regs_(regs), sbuf_(mapper, regs) {}
+
+  void config() {
+    timer_.setPeriod(regs_.dmcRate());
+    output_.setLevel(regs_.dmcDirectLoad());
+
+    if (regs_.dmcEnable()) {
+      sbuf_.enable();
+      // gen_.on();
+    } else {
+      sbuf_.disable();
+      output_.setLevel(0);
+      // gen_.off();
+    }
+  }
+
+  bool step() {
+    auto br_prev = bytesRemaining();
+    if (timer_.tick()) {
+      auto out_lvl = output_.clock(sbuf_);
+      assert(out_lvl <= 127);
+      gen_.change_output_level(out_lvl, timer_.period());
+    }
+    return (br_prev > 0 && bytesRemaining() == 0);
+  }
+
+  uint16_t bytesRemaining() const { return sbuf_.bytesRemaining(); }
+
+private:
+  double calc_freq(uint16_t period) const;
+  sdl_internal::DMC &gen_;
+  Registers &regs_;
+  SampleBuffer sbuf_;
+  SampleOutput output_;
+  SampleTimer timer_;
+};
+
 class Sequencer {
 public:
   enum class Mode {
@@ -301,11 +473,12 @@ class FrameCounter {
 public:
   FrameCounter() = default;
 
-  void inc(Channels &channels, aud::Registers &regs);
+  void inc(Channels &channels, DMC &dmc, aud::Registers &regs);
 
-  uint8_t status(const Channels &channels) const;
+  uint8_t status(const Channels &channels, const DMC &dmc) const;
   // TODO(oren): when do we clear this?
   bool frameInterrupt() const { return frame_interrupt_.status; }
+  bool dmcInterrupt() const { return dmc_interrupt_; }
 
   int count() const { return counter_; }
 
@@ -331,6 +504,7 @@ private:
     }
 
   } frame_interrupt_;
+  bool dmc_interrupt_ = false;
 };
 
 class APU {
@@ -364,6 +538,9 @@ public:
             Channel::Id::NOISE,
             sdl_internal::Audio::MakeGenerator<sdl_internal::Noise>(),
             registers_));
+    dmc_unit_ = std::make_unique<DMC>(
+        sdl_internal::Audio::MakeGenerator<sdl_internal::DMC>(), registers_,
+        mapper_);
   }
 
   void step(bool &irq);
@@ -381,6 +558,7 @@ private:
   Registers &registers_;
   Channels channels_;
   FrameCounter frame_counter_;
+  std::unique_ptr<DMC> dmc_unit_;
 };
 
 } // namespace aud

@@ -60,12 +60,10 @@ void Triangle::init_table() {
   }
 }
 
-void Generator::write_stream(uint8_t *byte_stream, int len) const {
+void Generator::write_stream(uint8_t *byte_stream, int len) {
   if (!enabled_) {
     return;
   }
-
-  // std::cout << volume_ << std::endl;
 
   std::lock_guard<std::mutex> lg(m_);
 
@@ -86,8 +84,6 @@ void Generator::write_chunk(int16_t *stream, long begin, long end, long len,
   double d_TL = Audio::TableLength;
 
   double phase_inc = (pitch / d_SR) * d_TL;
-  // std::cout << "phase inc " << phase_inc << std::endl;
-
   for (int i = 0; i < len; ++i) {
     phase += phase_inc;
     int phase_int = static_cast<int>(phase);
@@ -100,7 +96,7 @@ void Generator::write_chunk(int16_t *stream, long begin, long end, long len,
     if (phase_int < table_.size() && phase_int >= 0) {
       if (stream != nullptr) {
         auto sample = table_[phase_int];
-        sample *= (0.25 * volume_);
+        sample *= (0.2 * volume_);
         stream[i + begin] += sample;
       }
     }
@@ -110,17 +106,14 @@ void Generator::write_chunk(int16_t *stream, long begin, long end, long len,
 // TODO(oren): this isn't the right shape here.
 // see https://www.nesdev.org/wiki/APU_Pulse#Sequencer_behavior
 void Pulse::init_table() {
-
   double abs_duty = std::abs(duty_cycle_);
-
   int16_t pulse_width = abs_duty * (table_.size());
   std::lock_guard<std::mutex> lg(m_);
   for (int16_t i = 0; i <= pulse_width; ++i) {
     table_[i] = INT16_MAX;
-    // table_[i] = (i < pulse_width ? INT16_MAX : 0);
   }
 
-  std::fill(table_.begin() + pulse_width + 1, table_.end(), INT16_MIN);
+  std::fill(table_.begin() + pulse_width + 1, table_.end(), 0);
 }
 
 void Noise::init_table() {
@@ -149,6 +142,38 @@ void Noise::init_table() {
 
   // std::transform(table_.cbegin(), table_.cend(), table_.begin(),
   //                [](auto &e) { return e / 2; });
+}
+
+void DMC::write_stream(uint8_t *byte_stream, int len) {
+  if (!enabled_) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> ul(m_);
+
+  int16_t *stream = reinterpret_cast<int16_t *>(byte_stream);
+
+  int remain = len / 2;
+  int idx = 0;
+  while (idx < remain && !output_q_.empty()) {
+    int16_t level =
+        (static_cast<int16_t>(output_q_.front().level)) * (0.2 * volume_);
+    uint16_t rate = output_q_.front().rate;
+    int n = rate;
+
+    int i = 0;
+    for (i = 0; i < n && idx < remain; ++i, ++idx) {
+      stream[idx] += level;
+    }
+
+    // output_q_.pop_front();
+
+    if (i < n) {
+      output_q_.front().rate -= i;
+    } else {
+      output_q_.pop_front();
+    }
+  }
 }
 
 } // namespace sdl_internal
