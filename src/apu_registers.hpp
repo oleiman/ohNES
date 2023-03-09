@@ -5,6 +5,15 @@
 
 namespace aud {
 
+enum class ChannelId {
+  PULSE_1 = 0x00,
+  PULSE_2 = 0x01,
+  TRIANGLE = 0x02,
+  NOISE = 0x03,
+  DMC = 0x04,
+  NCID,
+};
+
 class Registers {
 public:
   enum CName {
@@ -39,23 +48,23 @@ public:
   uint8_t seqMode() const { return seq_mode_; }
   bool inhibitIrq() const { return inhibit_irq_; }
 
-  bool reset() {
+  bool frameCounterReset() {
     static int count = 0;
     // delay frame control effects for a couple of cycles (maybe more?)
-    if (!reset_) {
+    if (!fc_reset_) {
       count = 0;
-    } else if (count == 2) {
-      reset_ = false;
+      return false;
+    }
+
+    if (count == 2) {
+      fc_reset_ = false;
       seq_mode_ = (frame_control_reg_ & util::BIT7) >> 7;
       inhibit_irq_ = (frame_control_reg_ & util::BIT6);
       return true;
     } else {
       ++count;
+      return false;
     }
-    return false;
-    // auto tmp = reset_;
-    // reset_ = false;
-    // return tmp;
   }
 
   bool clearFrameInterrupt() {
@@ -64,11 +73,9 @@ public:
     return tmp;
   }
 
-  bool p1Enable() const { return status_reg_ & util::BIT0; }
-  bool p2Enable() const { return status_reg_ & util::BIT1; }
-  bool trEnable() const { return status_reg_ & util::BIT2; }
-  bool nsEnable() const { return status_reg_ & util::BIT3; }
-  bool dmcEnable() const { return status_reg_ & util::BIT4; }
+  bool isEnabled(ChannelId id) {
+    return status_reg_ & (0b1 << static_cast<uint8_t>(id));
+  }
 
   bool dmcEnableChange() {
     auto tmp = dmc_en_changed;
@@ -76,106 +83,59 @@ public:
     return tmp;
   }
 
-  bool p1EnvStart() {
-    auto tmp = p1_env_start;
-    p1_env_start = false;
-    return tmp;
+  bool envStart(ChannelId id) {
+    return get_and_clear_channel_flag(EnvStartFlags, id);
   }
-
-  bool p2EnvStart() {
-    auto tmp = p2_env_start;
-    p2_env_start = false;
-    return tmp;
-  }
-
-  bool nsEnvStart() {
-    auto tmp = ns_env_start;
-    ns_env_start = false;
-    return tmp;
-  }
-
-  double p1Duty() const { return calc_duty_cycle(generator_regs[P1_CTRL]); }
-  uint16_t p1Period() const {
-    return ((static_cast<uint16_t>(generator_regs[P1_THI] & 0b111) << 8) |
-            generator_regs[P1_TLO]);
-  }
-
-  uint8_t p1LcLoad() {
-    if (p1_load_pending) {
-      p1_load_pending = false;
-      return (generator_regs[P1_THI] >> 3 & 0b11111);
+  uint8_t lcLoad(ChannelId id) {
+    if (get_and_clear_channel_flag(LcLoadFlags, id)) {
+      return get_reg(id, 3) >> 3 & 0b11111;
     } else {
       return 0xFF;
     }
   }
-  bool p1Halt() const { return generator_regs[P1_CTRL] & util::BIT5; }
-  bool p1LoopEnv() const { return p1Halt(); }
-  bool p1ConstVol() const { return generator_regs[P1_CTRL] & util::BIT4; }
-  uint8_t p1VolDivider() const { return generator_regs[P1_CTRL] & 0b1111; }
+  bool lcHalt(ChannelId id) {
+    return get_reg(id, 0) & (is_tri(id) ? util::BIT7 : util::BIT5);
+  }
+  bool loopEnv(ChannelId id) { return !is_tri(id) && lcHalt(id); }
+  bool constVol(ChannelId id) {
+    return is_tri(id) || (get_reg(id, 0) & util::BIT4);
+  }
 
-  bool p1SweepEnabled() const { return generator_regs[P1_SWP] & util::BIT7; }
-  uint8_t p1SweepDivider() {
-    if (p1_sweep_reload) {
-      p1_sweep_reload = false;
-      return (generator_regs[P1_SWP] >> 4) & 0b111;
+  uint8_t volDivider(ChannelId id) {
+    if (is_tri(id)) {
+      return 10;
+    } else {
+      return get_reg(id, 0) & 0b1111;
+    }
+  }
+
+  bool sweepEnabled(ChannelId id) {
+    return is_pulse(id) && (get_reg(id, 1) & util::BIT7);
+  }
+  uint8_t sweepDivider(ChannelId id) {
+    if (get_and_clear_channel_flag(SweepReloadFlags, id)) {
+      return (get_reg(id, 1) >> 4) & 0b111;
     } else {
       return 0xFF;
     }
   }
-  bool p1SweepNegate() const { return generator_regs[P1_SWP] & util::BIT3; }
-  uint8_t p1SweepShift() const { return generator_regs[P1_SWP] & 0b111; }
+  bool sweepNegate(ChannelId id) { return get_reg(id, 1) & util::BIT3; }
+  uint8_t sweepShift(ChannelId id) { return get_reg(id, 1) & 0b111; }
 
-  bool p2SweepEnabled() const { return generator_regs[P2_SWP] & util::BIT7; }
-  uint8_t p2SweepDivider() {
-    if (p2_sweep_reload) {
-      p2_sweep_reload = false;
-      return (generator_regs[P2_SWP] >> 4) & 0b111;
-    } else {
-      return 0xFF;
-    }
-  }
-  bool p2SweepNegate() const { return generator_regs[P2_SWP] & util::BIT3; }
-  uint8_t p2SweepShift() const { return generator_regs[P2_SWP] & 0b111; }
-
-  double p2Duty() const { return calc_duty_cycle(generator_regs[P2_CTRL]); }
-
-  uint16_t p2Period() const {
-    return ((static_cast<uint16_t>(generator_regs[P2_THI] & 0b111) << 8) |
-            generator_regs[P2_TLO]);
+  double dutyCycle(ChannelId id) {
+    assert(is_pulse(id));
+    return calc_duty_cycle(get_reg(id, 0));
   }
 
-  uint8_t p2LcLoad() {
-    if (p2_load_pending) {
-      p2_load_pending = false;
-      return (generator_regs[P2_THI] >> 3 & 0b11111);
-    } else {
-      return 0xFF;
-    }
-  }
-  bool p2Halt() const { return generator_regs[P2_CTRL] & util::BIT5; }
-  bool p2LoopEnv() const { return p2Halt(); }
-  bool p2ConstVol() const { return generator_regs[P2_CTRL] & util::BIT4; }
-  uint8_t p2VolDivider() const { return generator_regs[P2_CTRL] & 0b1111; }
-
-  uint16_t trPeriod() const {
-    return ((static_cast<uint16_t>(generator_regs[TR_THI] & 0b111) << 8) |
-            generator_regs[TR_TLO]);
-  }
-
-  uint8_t trLcLoad() {
-    if (tr_load_pending) {
-      // if (!trHalt()) {
-      tr_load_pending = false;
-      // }
-      return (generator_regs[TR_THI] >> 3 & 0b11111);
-    } else {
-      return 0xFF;
-    }
+  uint16_t generatorPeriod(ChannelId id) {
+    assert(!is_noise(id));
+    return ((static_cast<uint16_t>(get_reg(id, 3) & 0b111) << 8) |
+            get_reg(id, 2));
   }
 
   uint8_t trLincLoad() {
     if (tr_lin_load_pending) {
-      if (!trHalt()) {
+      if (!lcHalt(ChannelId::TRIANGLE)) {
         tr_lin_load_pending = false;
       }
       return (generator_regs[TR_CTRL] & 0b1111111);
@@ -183,8 +143,6 @@ public:
       return 0xFF;
     }
   }
-
-  bool trHalt() const { return generator_regs[TR_CTRL] & util::BIT7; }
 
   bool nsMode() const { return generator_regs[NS_LNP] & util::BIT7; }
 
@@ -195,20 +153,6 @@ public:
     } else {
       static double cpu_freq = 1.789773e6;
       return cpu_freq / (16 * (period + 1));
-    }
-  }
-
-  bool nsHalt() const { return generator_regs[NS_CTRL] & util::BIT5; }
-  bool nsLoopEnv() const { return nsHalt(); }
-  bool nsConstVol() const { return generator_regs[NS_CTRL] & util::BIT4; }
-  uint8_t nsVolDivider() const { return generator_regs[NS_CTRL] & 0b1111; }
-
-  uint8_t nsLcLoad() {
-    if (ns_load_pending) {
-      ns_load_pending = false;
-      return (generator_regs[NS_LCL] >> 3 & 0b11111);
-    } else {
-      return 0xFF;
     }
   }
 
@@ -239,37 +183,55 @@ public:
 private:
   double calc_duty_cycle(uint8_t val) const;
 
+  using ChannelFlags = std::array<bool, static_cast<int>(ChannelId::NCID)>;
+
+  void set_channel_flag(ChannelFlags &arr, ChannelId id) {
+    arr[static_cast<int>(id)] = true;
+  }
+
+  bool get_and_clear_channel_flag(ChannelFlags &arr, ChannelId id) {
+    bool tmp = arr[static_cast<int>(id)];
+    arr[static_cast<int>(id)] = false;
+    return tmp;
+  }
+
+  uint8_t get_reg(ChannelId id, uint8_t off) {
+    return generator_regs[GRegBase[static_cast<int>(id)] + off];
+  }
+
+  bool is_pulse(ChannelId id) {
+    return id == ChannelId::PULSE_1 || id == ChannelId::PULSE_2;
+  }
+  bool is_tri(ChannelId id) { return id == ChannelId::TRIANGLE; }
+  bool is_noise(ChannelId id) { return id == ChannelId::NOISE; }
+  bool is_dmc(ChannelId id) { return id == ChannelId::DMC; }
+
   std::array<uint8_t, 20> generator_regs = {};
   uint8_t status_reg_ = 0x00;
-  uint8_t frame_control_reg_ = 0x00;
 
   // frame counter
-  uint8_t seq_mode_ = 0;
-  bool inhibit_irq_ = false;
-  bool reset_ = false;
+  uint8_t frame_control_reg_ = 0x00;
+  bool fc_reset_ = false;
   uint8_t fc_status_ = 0x00;
   bool clear_frame_interrupt_ = false;
+  uint8_t seq_mode_ = 0;
+  bool inhibit_irq_ = false;
 
-  bool p1_load_pending = true;
-  bool p2_load_pending = true;
-  bool tr_load_pending = true;
   bool tr_lin_load_pending = true;
-  bool ns_load_pending = true;
+
   bool dmc_en_changed = false;
-
   bool dmc_direct_load = false;
-
-  bool p1_sweep_reload = false;
-  bool p2_sweep_reload = false;
-
-  bool p1_env_start = false;
-  bool p2_env_start = false;
-  bool ns_env_start = false;
 
   static constexpr std::array<uint16_t, 0x10> DMCRateTable = {
       428, 380, 340, 320, 286, 254, 226, 214,
       190, 160, 142, 128, 106, 84,  72,  54,
   };
+
+  static constexpr std::array<uint8_t, static_cast<size_t>(ChannelId::NCID)>
+      GRegBase = {0x00, 0x04, 0x08, 0x0C, 0x10};
+  static ChannelFlags EnvStartFlags;
+  static ChannelFlags LcLoadFlags;
+  static ChannelFlags SweepReloadFlags;
 };
 
 } // namespace aud

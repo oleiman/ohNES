@@ -140,8 +140,8 @@ void Noise::init_table() {
     table_[i] = static_cast<int16_t>(next);
   }
 
-  // std::transform(table_.cbegin(), table_.cend(), table_.begin(),
-  //                [](auto &e) { return e / 2; });
+  std::transform(table_.cbegin(), table_.cend(), table_.begin(),
+                 [](auto &e) { return e / 2; });
 }
 
 void DMC::write_stream(uint8_t *byte_stream, int len) {

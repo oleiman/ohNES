@@ -3,6 +3,39 @@
 
 namespace aud {
 
+APU::APU(mapper::NESMapper &mapper, Registers &registers)
+    : mapper_(mapper), registers_(registers) {
+  (void)mapper_;
+  (void)registers_;
+  channels_.emplace(
+      ChannelId::PULSE_1,
+      std::make_unique<Channel>(
+          ChannelId::PULSE_1,
+          sdl_internal::Audio::MakeGenerator<sdl_internal::Pulse>(),
+          registers_));
+  channels_.emplace(
+      ChannelId::PULSE_2,
+      std::make_unique<Channel>(
+          ChannelId::PULSE_2,
+          sdl_internal::Audio::MakeGenerator<sdl_internal::Pulse>(),
+          registers_));
+  channels_.emplace(
+      ChannelId::TRIANGLE,
+      std::make_unique<Channel>(
+          ChannelId::TRIANGLE,
+          sdl_internal::Audio::MakeGenerator<sdl_internal::Triangle>(),
+          registers_));
+  channels_.emplace(
+      ChannelId::NOISE,
+      std::make_unique<Channel>(
+          ChannelId::NOISE,
+          sdl_internal::Audio::MakeGenerator<sdl_internal::Noise>(),
+          registers_));
+  dmc_unit_ = std::make_unique<DMC>(
+      sdl_internal::Audio::MakeGenerator<sdl_internal::DMC>(), registers_,
+      mapper_);
+}
+
 void APU::step(bool &irq) {
 
   frame_counter_.inc(channels_, *dmc_unit_, registers_);
@@ -20,8 +53,6 @@ void APU::step(bool &irq) {
 
 void FrameCounter::inc(Channels &channels, DMC &dmc_unit,
                        aud::Registers &regs) {
-
-  // configure sound generators
 
   if (regs.clearFrameInterrupt()) {
     frame_interrupt_.clear();
@@ -42,7 +73,7 @@ void FrameCounter::inc(Channels &channels, DMC &dmc_unit,
     dmc_interrupt_ = false;
   }
 
-  if (regs.reset()) {
+  if (regs.frameCounterReset()) {
 
     seq_.setMode(Sequencer::Mode(regs.seqMode()));
     seq_.reset();
@@ -91,9 +122,7 @@ uint8_t FrameCounter::status(const Channels &channels,
   }
 
   for (const auto &[id, chan] : channels) {
-    if (chan->checkLc() && id != Channel::Id::DMC) {
-      result |= (0b1 << static_cast<uint8_t>(id));
-    }
+    result |= chan->status();
   }
 
   if (dmc_unit.bytesRemaining()) {
@@ -103,56 +132,162 @@ uint8_t FrameCounter::status(const Channels &channels,
   return result;
 }
 
-bool Sequencer::step(int cycle_count) {
-  bool irq_required = false;
+void LengthCounter::tick() {
+  if (halt_ || counter_ == 0) {
+    return;
+  } else {
+    counter_--;
+  }
+}
+bool LengthCounter::load(uint8_t val) {
+  if (enabled_ && val < 0x20) {
+    counter_ = LengthTable[val & 0x1F];
+  }
+  return val < 0x20;
+}
 
-  if (mode_ == Mode::M0) {
-    switch (cycle_count) {
-    // case 0:
-    //   irq_required = true;
-    //   break;
-    case 3728:
-      qf_ = true;
-      break;
-    case 7456:
-      qf_ = true;
-      hf_ = true;
-      break;
-    case 11185:
-      qf_ = true;
-      break;
-    case 14914:
-      irq_required = true;
-      qf_ = true;
-      hf_ = true;
-      break;
-    default:
-      break;
+bool LengthCounter::config(Registers &regs, ChannelId id) {
+  bool reset_env = false;
+  enable(regs.isEnabled(id));
+  if (load(regs.lcLoad(id))) {
+    // If we loaded a good value (i.e. lc load was set), reset the envelope
+    reset_env = true;
+  }
+  halt(regs.lcHalt(id));
+  return reset_env;
+}
+
+void Envelope::config(Registers &regs, ChannelId id) {
+  setVolDivider(regs.volDivider(id));
+  setConst(regs.constVol(id));
+  setLoop(regs.loopEnv(id));
+}
+
+void SampleBuffer::enable() {
+  if (bytes_remaining_ == 0) {
+    sample_base_addr_ = curr_addr_ = regs_.dmcSampleAddress();
+    sample_len_ = bytes_remaining_ = regs_.dmcSampleLength();
+    sample_load_ = true;
+    fill();
+  }
+}
+
+uint8_t SampleBuffer::get() {
+  assert(!empty_);
+  auto val = buf_;
+  if (sample_load_) {
+    is_first_byte_ = true;
+    sample_load_ = false;
+  }
+  fill();
+  return val;
+}
+
+void SampleBuffer::fill() {
+  if (bytes_remaining_ > 0) {
+    empty_ = false;
+    buf_ = mapper_.read(curr_addr_);
+    if (curr_addr_ == 0xFFFF) {
+      curr_addr_ = 0x8000;
+    } else {
+      ++curr_addr_;
+    }
+    --bytes_remaining_;
+    if (bytes_remaining_ == 0 && regs_.dmcLoop()) {
+      curr_addr_ = regs_.dmcSampleAddress();
+      bytes_remaining_ = regs_.dmcSampleLength();
+      sample_load_ = true;
     }
   } else {
-    switch (cycle_count) {
-    case 3728:
-      qf_ = true;
-      break;
-    case 7456:
-      qf_ = true;
-      hf_ = true;
-      break;
-    case 11185:
-      qf_ = true;
-      break;
-    case 14914:
-      break;
-    case 18640:
-      qf_ = true;
-      hf_ = true;
-      break;
-    default:
-      break;
+    empty_ = true;
+  }
+}
+
+uint8_t SampleOutput::clock(SampleBuffer &sbuf) {
+  if (!silence_) {
+    uint8_t l = shift_register_ & 0b1;
+    if (l && output_level_ <= 125) {
+      output_level_ += 2;
+    } else if (!l && output_level_ >= 2) {
+      output_level_ -= 2;
     }
   }
+  shift_register_ >>= 1;
+  --bits_remaining_;
+  if (bits_remaining_ == 0) {
+    start_cycle(sbuf);
+  }
+  return (silence_ ? 0 : output_level_);
+}
+
+void SampleOutput::start_cycle(SampleBuffer &sbuf) {
+  silence_ = sbuf.empty();
+  if (!silence_) {
+    shift_register_ = sbuf.get();
+    if (sbuf.isFirst()) {
+      output_level_ = 0;
+    }
+  }
+  bits_remaining_ = 8;
+}
+
+bool SampleTimer::tick() {
+  ++counter_;
+  if (counter_ >= period_) {
+    counter_ = 0;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+void DMC::config() {
+  timer_.setPeriod(regs_.dmcRate());
+  output_.setLevel(regs_.dmcDirectLoad());
+
+  if (regs_.isEnabled(id_)) {
+    sbuf_.enable();
+    // gen_.on();
+  } else {
+    sbuf_.disable();
+    output_.setLevel(0);
+    // gen_.off();
+  }
+}
+
+bool DMC::step() {
+  auto br_prev = bytesRemaining();
+  if (timer_.tick()) {
+    auto out_lvl = output_.clock(sbuf_);
+    assert(out_lvl <= 127);
+    gen_.change_output_level(out_lvl, timer_.period());
+  }
+  return (br_prev > 0 && bytesRemaining() == 0);
+}
+
+bool Sequencer::step(int cycle_count) {
+  bool irq_required = (mode_ == Mode::M0 && cycle_count == 14914);
+
+  const auto qlt = QfLookup.find(mode_);
+  assert(qlt != QfLookup.end());
+  qf_ = qf_ || qlt->second.find(cycle_count) != qlt->second.end();
+
+  const auto hlt = HfLookup.find(mode_);
+  assert(hlt != HfLookup.end());
+  hf_ = hf_ || hlt->second.find(cycle_count) != hlt->second.end();
 
   return irq_required;
+}
+
+void Sequencer::clock(Channels &channels) {
+  if (qf_) {
+    qf_ = false;
+    quarter_frame(channels);
+  }
+  if (hf_) {
+    hf_ = false;
+    half_frame(channels);
+  }
 }
 
 void Sequencer::quarter_frame(Channels &channels) {
@@ -167,6 +302,18 @@ void Sequencer::half_frame(Channels &channels) {
     c->tick_sweep();
   }
 }
+
+const std::unordered_map<Sequencer::Mode, std::unordered_set<int>>
+    Sequencer::QfLookup = {
+        {Mode::M0, {3728, 7456, 11185, 14914}},
+        {Mode::M1, {3728, 7456, 11185, 18640}},
+};
+
+const std::unordered_map<Sequencer::Mode, std::unordered_set<int>>
+    Sequencer::HfLookup = {
+        {Mode::M0, {7456, 14914}},
+        {Mode::M1, {7456, 18640}},
+};
 
 void Envelope::tick(bool start) {
   if (start) {
@@ -188,23 +335,51 @@ void Envelope::tick(bool start) {
   }
 }
 
-void Sweep::tick(uint16_t curr_period, int carry) {
+void Sweep::tick(uint16_t curr_period) {
   if (divider_ == 0 && enabled_ && !shouldMute(curr_period)) {
     int16_t amt = static_cast<int16_t>((curr_period + change_amt_) >> shift_);
     assert(amt >= 0);
     if (negative_) {
-      amt = -amt + carry;
+      amt = -amt + carry_;
     }
 
     change_amt_ += amt;
   }
 
-  if (should_reload_ || divider_ == 0) {
-    divider_ = p_;
+  if (should_reload_) {
+    // TODO(oren): this isn't quite right. Fixes an issue where successive swept
+    // sounds will rise in pitch indefinitely, but introduces incorrect pitch
+    // behavior in, e.g. the SMB death tune. Also fixes an issue with the big
+    // mario to little mario transition sound effect.
+    reset();
+    divider_ = 0;
     should_reload_ = false;
+  }
+
+  if (divider_ == 0) {
+    divider_ = p_;
   } else {
     --divider_;
   }
+}
+
+void Channel::config() {
+  if (isTriangle()) {
+    lin_lc_.enable(true);
+  } else if (isPulse()) {
+    mute_ = swp_.shouldMute(regs_.generatorPeriod(id_));
+    swp_.config(regs_, id_);
+    static_cast<sdl_internal::Pulse &>(generator_)
+        .set_duty_cycle(regs_.dutyCycle(id_));
+  }
+
+  if (lc_.config(regs_, id_)) {
+    env_.reset();
+    // TODO(oren): reset pulse phase?
+  }
+
+  env_.config(regs_, id_);
+  generator_.set_pitch(getPitch());
 }
 
 void Channel::toggle() {
@@ -217,7 +392,8 @@ void Channel::toggle() {
 
 // TODO(oren): pass the channel type rather than m
 // this should be a general goal for the registers module
-double Channel::calc_freq(uint16_t period, uint32_t m) const {
+double Channel::calc_freq(uint16_t period) const {
+  uint32_t m = isPulse() ? 16 : 32;
   static double cpu_freq = 1.789773e6;
   return cpu_freq / (m * (period + 1));
 }
@@ -227,7 +403,7 @@ double DMC::calc_freq(uint16_t period) const {
   return cpu_freq / period;
 }
 
-std::array<uint8_t, 0x20> LengthCounter::LengthTable = {
+const std::array<uint8_t, 0x20> LengthCounter::LengthTable = {
     10, 254, 20, 2,  40, 4,  80, 6,  160, 8,  60, 10, 14, 12, 26, 14, // 00-0F
     12, 16,  24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30, // 10-1F
 };

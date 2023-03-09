@@ -42,7 +42,11 @@ public:
   virtual void write_stream(uint8_t *stream, int len);
   virtual ~Generator() = default;
 
-  void set_pitch(double p) { pitch_ = p; }
+  void set_pitch(double p) {
+    // TODO(oren): might not be a good idea to assert on this path
+    assert(p > 0);
+    pitch_ = p;
+  }
   void set_volume(double v) { volume_ = v; }
   void on() { enabled_ = true; }
   void off() { enabled_ = false; }
