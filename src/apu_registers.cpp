@@ -10,42 +10,38 @@ void Registers::write(CName r, uint8_t val, mapper::NESMapper &mapper) {
     frame_control_reg_ = val;
     fc_reset_ = true;
   } else if (r == CName::STATUS) {
-    bool b4 = status_reg_ & util::BIT4;
     status_reg_ = val;
-    bool af = status_reg_ & util::BIT4;
-    if (!af || (!b4 && af)) {
-      dmc_en_changed = true;
-    }
+    dmc_en_changed = true;
+    // bool b4 = status_reg_ & util::BIT4;
+    // status_reg_ = val;
+    // bool af = status_reg_ & util::BIT4;
+    // if (!af || (!b4 && af)) {
+    //   dmc_en_changed = true;
+    // }
   } else {
     generator_regs[static_cast<int>(r)] = val;
   }
 
   switch (r) {
   case P1_THI:
-    // p1_load_pending = true;
     set_channel_flag(LcLoadFlags, ChannelId::PULSE_1);
     set_channel_flag(EnvStartFlags, ChannelId::PULSE_1);
     break;
   case P1_SWP:
     set_channel_flag(SweepReloadFlags, ChannelId::PULSE_1);
-    // p1_sweep_reload = true;
     break;
   case P2_THI:
-    // p2_load_pending = true;
     set_channel_flag(LcLoadFlags, ChannelId::PULSE_2);
     set_channel_flag(EnvStartFlags, ChannelId::PULSE_2);
     break;
   case P2_SWP:
-    // p2_sweep_reload = true;
     set_channel_flag(SweepReloadFlags, ChannelId::PULSE_2);
     break;
   case TR_THI:
-    // tr_load_pending = true;
     set_channel_flag(LcLoadFlags, ChannelId::TRIANGLE);
     tr_lin_load_pending = true;
     break;
   case NS_LCL:
-    // ns_load_pending = true;
     set_channel_flag(LcLoadFlags, ChannelId::NOISE);
     set_channel_flag(EnvStartFlags, ChannelId::NOISE);
     break;

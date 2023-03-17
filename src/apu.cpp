@@ -217,7 +217,7 @@ uint8_t SampleOutput::clock(SampleBuffer &sbuf) {
   if (bits_remaining_ == 0) {
     start_cycle(sbuf);
   }
-  return (silence_ ? 0 : output_level_);
+  return (silence_ ? 0xFF : output_level_);
 }
 
 void SampleOutput::start_cycle(SampleBuffer &sbuf) {
@@ -225,7 +225,7 @@ void SampleOutput::start_cycle(SampleBuffer &sbuf) {
   if (!silence_) {
     shift_register_ = sbuf.get();
     if (sbuf.isFirst()) {
-      output_level_ = 0;
+      output_level_ = 0x40;
     }
   }
   bits_remaining_ = 8;
@@ -247,11 +247,12 @@ void DMC::config() {
 
   if (regs_.isEnabled(id_)) {
     sbuf_.enable();
-    // gen_.on();
+    output_.enable();
+    gen_.on();
   } else {
     sbuf_.disable();
-    output_.setLevel(0);
-    // gen_.off();
+    output_.disable();
+    gen_.off();
   }
 }
 
@@ -259,7 +260,7 @@ bool DMC::step() {
   auto br_prev = bytesRemaining();
   if (timer_.tick()) {
     auto out_lvl = output_.clock(sbuf_);
-    assert(out_lvl <= 127);
+    assert(out_lvl <= 127 || out_lvl == 0xFF);
     gen_.change_output_level(out_lvl, timer_.period());
   }
   return (br_prev > 0 && bytesRemaining() == 0);

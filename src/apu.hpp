@@ -208,7 +208,7 @@ private:
   uint16_t sample_base_addr_;
   uint16_t sample_len_;
   uint16_t curr_addr_;
-  uint8_t bytes_remaining_ = 0;
+  uint16_t bytes_remaining_ = 0;
   bool empty_ = true;
   bool sample_load_ = false;
   bool is_first_byte_ = false;
@@ -226,13 +226,23 @@ struct SampleOutput {
     }
   }
 
+  void enable() { enable_ = true; }
+  void disable() {
+    level_setting_ = 0;
+    output_level_ = 0x40;
+    enable_ = false;
+  }
+
+  bool isEnabled() const { return enable_; }
+
 private:
   void start_cycle(SampleBuffer &sbuf);
   uint8_t shift_register_ = 0;
-  uint8_t output_level_ = 0;
+  uint8_t output_level_ = 0x40;
   uint8_t level_setting_ = 0;
   uint8_t bits_remaining_ = 8;
   bool silence_ = true;
+  bool enable_ = false;
 };
 
 struct SampleTimer {

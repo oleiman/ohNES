@@ -3,6 +3,7 @@
 #include <SDL.h>
 
 #include <array>
+#include <cmath>
 #include <deque>
 #include <iostream>
 #include <memory>
@@ -14,7 +15,13 @@ class Generator;
 
 class Audio {
 public:
-  static constexpr int SampleRate = 44100;
+  // static constexpr int SampleRate = 44100;
+  // NOTE(oren): this is entirely a hack to make DMC playback sound reasonable
+  // without too much effort. Would like to restore 44100Hz sample rate then do
+  // the upsampling/interpolation at the output stage. However, this setting
+  // actually sounds pretty nice across the board, so maybe not worth the
+  // effort.
+  static constexpr int SampleRate = 33143;
   static constexpr int TableLength = 1024;
   Audio();
   ~Audio();
@@ -109,32 +116,35 @@ public:
   void write_stream(uint8_t *stream, int len) override;
 
   void change_output_level(uint8_t level, uint16_t rate) {
-    // this might put way too much pressure on the lock
+    OutputLevel lvl(level, rate);
+
     std::lock_guard<std::mutex> lg(m_);
-    output_q_.emplace_back(level, rate);
+    for (int i = 0; i < lvl.rate; ++i) {
+      out_buf_[write_head_] = lvl.level;
+      write_head_ = (write_head_ + 1) % out_buf_.size();
+    }
   }
 
 private:
   struct OutputLevel {
-    // output level is always kept in [0,127], so we can safely multiply by 100h
     OutputLevel(uint8_t l, uint16_t r)
-        : level(project(l, 0, 127, 0, INT16_MAX)), rate(r / 40.646) {}
+        : level(project(l, 0, 127, 0, INT16_MAX)),
+          rate(std::roundf(r / 40.646)) {}
     int16_t level;
     uint16_t rate;
 
   private:
     int16_t project(int16_t val, int16_t old_min, int16_t old_max,
                     int16_t new_min, int16_t new_max) {
-      if (val == 0) {
+      if (val == 0xFF) {
         return 0;
       }
-      double old_range = old_max - old_min;
-      double new_range = new_max - new_min;
-      return static_cast<int16_t>((((val - old_min) * new_range) / old_range) +
-                                  new_min);
+      return (val - 0x40) << 8;
     }
   };
-  std::deque<OutputLevel> output_q_;
+  std::array<int16_t, Audio::TableLength * 2> out_buf_;
+  int read_head_ = 0;
+  int write_head_ = 0;
 };
 
 } // namespace sdl_internal

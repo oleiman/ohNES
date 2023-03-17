@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <random>
+#include <sstream>
 
 namespace sdl_internal {
 
@@ -150,29 +151,15 @@ void DMC::write_stream(uint8_t *byte_stream, int len) {
   }
 
   std::lock_guard<std::mutex> ul(m_);
-
   int16_t *stream = reinterpret_cast<int16_t *>(byte_stream);
 
   int remain = len / 2;
   int idx = 0;
-  while (idx < remain && !output_q_.empty()) {
-    int16_t level =
-        (static_cast<int16_t>(output_q_.front().level)) * (0.2 * volume_);
-    uint16_t rate = output_q_.front().rate;
-    int n = rate;
-
-    int i = 0;
-    for (i = 0; i < n && idx < remain; ++i, ++idx) {
-      stream[idx] += level;
-    }
-
-    // output_q_.pop_front();
-
-    if (i < n) {
-      output_q_.front().rate -= i;
-    } else {
-      output_q_.pop_front();
-    }
+  while (idx < remain && read_head_ != write_head_) {
+    int16_t level = out_buf_[read_head_];
+    stream[idx] += level;
+    ++idx;
+    read_head_ = (read_head_ + 1) % out_buf_.size();
   }
 }
 
