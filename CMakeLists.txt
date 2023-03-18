@@ -25,6 +25,7 @@ add_executable(ohNES
   src/mappers/uxrom.cpp
   src/mappers/mmc2.cpp
   src/mappers/mmc3.cpp
+  src/mappers/axrom.cpp
   src/mappers/mapper_factory.cpp
   src/sdl/audio.cpp
   src/dbg/nes_debugger.cpp

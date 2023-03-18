@@ -1,4 +1,5 @@
 #include "mappers/mapper_factory.hpp"
+#include "mappers/axrom.hpp"
 #include "mappers/base_mapper.hpp"
 #include "mappers/cnrom.hpp"
 #include "mappers/color_dreams.hpp"
@@ -25,6 +26,8 @@ MapperFactory(sys::NES &console, cart::Cartridge const &c, vid::Registers &reg,
     return std::make_unique<CNROM>(console, c, reg, areg, oam, pad);
   case 4:
     return std::make_unique<MMC3>(console, c, reg, areg, oam, pad);
+  case 7:
+    return std::make_unique<AxROM>(console, c, reg, areg, oam, pad);
   case 9:
     return std::make_unique<MMC2>(console, c, reg, areg, oam, pad);
   case 11:
