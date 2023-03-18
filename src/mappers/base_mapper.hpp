@@ -76,15 +76,8 @@ public:
     } else if (addr == 0x4014) {
       oamDma(static_cast<AddressT>(data) << 8);
     } else if (addr == 0x4016) {
-      joypad_.toggleStrobe();
-      // } else if (addr == 0x4017) {
-      //   // TODO(oren): controller 2
+      joypad_.setStrobe(data & 0b1);
     } else if (addr < 0x4018) {
-      if (addr != 0x4017) {
-        // std::cout << std::hex << addr << std::dec << " " <<
-        // std::bitset<8>(data)
-        //           << std::endl;
-      }
       apu_reg_.write(AudCName(addr & 0x1F), data, *this);
     } else if (addr < 0x4020) {
       // some other i/o?

@@ -22,7 +22,7 @@ struct JoyPad {
   uint8_t readNext();
   void press(Button const b);
   void release(Button const b);
-  void toggleStrobe();
+  void setStrobe(bool s);
 
 private:
   std::array<uint8_t, static_cast<size_t>(Button::N_BUTTONS)> state_ = {};
