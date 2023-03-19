@@ -63,14 +63,7 @@ public:
   instr::Instruction decode(AddressT pc);
   std::string InstrToStr(const instr::Instruction &instr);
   std::string CpuStateStr() const;
-
-  void setLogging(bool l) {
-    if (l && !logging_) {
-      log_stream_.open("ohNES.log");
-      assert(log_stream_);
-    }
-    logging_ = l;
-  }
+  void setLogging(bool l);
 
   template <typename T, typename... Args> void setBreakpoint(Args... args) {
     if (breakpoints_.size() >= 32) {

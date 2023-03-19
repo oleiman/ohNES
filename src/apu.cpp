@@ -7,33 +7,24 @@ APU::APU(mapper::NESMapper &mapper, Registers &registers)
     : mapper_(mapper), registers_(registers) {
   (void)mapper_;
   (void)registers_;
-  channels_.emplace(
-      ChannelId::PULSE_1,
-      std::make_unique<Channel>(
-          ChannelId::PULSE_1,
-          sdl_internal::Audio::MakeGenerator<sdl_internal::Pulse>(),
-          registers_));
-  channels_.emplace(
-      ChannelId::PULSE_2,
-      std::make_unique<Channel>(
-          ChannelId::PULSE_2,
-          sdl_internal::Audio::MakeGenerator<sdl_internal::Pulse>(),
-          registers_));
-  channels_.emplace(
-      ChannelId::TRIANGLE,
-      std::make_unique<Channel>(
-          ChannelId::TRIANGLE,
-          sdl_internal::Audio::MakeGenerator<sdl_internal::Triangle>(),
-          registers_));
-  channels_.emplace(
-      ChannelId::NOISE,
-      std::make_unique<Channel>(
-          ChannelId::NOISE,
-          sdl_internal::Audio::MakeGenerator<sdl_internal::Noise>(),
-          registers_));
-  dmc_unit_ = std::make_unique<DMC>(
-      sdl_internal::Audio::MakeGenerator<sdl_internal::DMC>(), registers_,
-      mapper_);
+  channels_.emplace(ChannelId::PULSE_1,
+                    std::make_unique<Channel>(ChannelId::PULSE_1,
+                                              Generator::Make<Pulse>(),
+                                              registers_));
+  channels_.emplace(ChannelId::PULSE_2,
+                    std::make_unique<Channel>(ChannelId::PULSE_2,
+                                              Generator::Make<Pulse>(),
+                                              registers_));
+  channels_.emplace(ChannelId::TRIANGLE,
+                    std::make_unique<Channel>(ChannelId::TRIANGLE,
+                                              Generator::Make<Triangle>(),
+                                              registers_));
+  channels_.emplace(ChannelId::NOISE,
+                    std::make_unique<Channel>(ChannelId::NOISE,
+                                              Generator::Make<Noise>(),
+                                              registers_));
+  dmc_unit_ =
+      std::make_unique<DMCUnit>(Generator::Make<DMC>(), registers_, mapper_);
 }
 
 void APU::step(bool &irq) {
@@ -51,7 +42,7 @@ void APU::step(bool &irq) {
   // }
 }
 
-void FrameCounter::inc(Channels &channels, DMC &dmc_unit,
+void FrameCounter::inc(Channels &channels, DMCUnit &dmc_unit,
                        aud::Registers &regs) {
 
   if (regs.clearFrameInterrupt()) {
@@ -111,7 +102,7 @@ void FrameCounter::inc(Channels &channels, DMC &dmc_unit,
 }
 
 uint8_t FrameCounter::status(const Channels &channels,
-                             const DMC &dmc_unit) const {
+                             const DMCUnit &dmc_unit) const {
   uint8_t result = 0;
   if (dmc_interrupt_) {
     result |= util::BIT7;
@@ -241,7 +232,7 @@ bool SampleTimer::tick() {
   }
 }
 
-void DMC::config() {
+void DMCUnit::config() {
   timer_.setPeriod(regs_.dmcRate());
   output_.setLevel(regs_.dmcDirectLoad());
 
@@ -256,7 +247,7 @@ void DMC::config() {
   }
 }
 
-bool DMC::step() {
+bool DMCUnit::step() {
   auto br_prev = bytesRemaining();
   if (timer_.tick()) {
     auto out_lvl = output_.clock(sbuf_);
@@ -370,8 +361,7 @@ void Channel::config() {
   } else if (isPulse()) {
     mute_ = swp_.shouldMute(regs_.generatorPeriod(id_));
     swp_.config(regs_, id_);
-    static_cast<sdl_internal::Pulse &>(generator_)
-        .set_duty_cycle(regs_.dutyCycle(id_));
+    static_cast<Pulse &>(generator_).set_duty_cycle(regs_.dutyCycle(id_));
   }
 
   if (lc_.config(regs_, id_)) {
@@ -390,6 +380,7 @@ void Channel::toggle() {
     generator_.off();
   }
 }
+void Channel::syncVolume() { generator_.set_volume((1.0 * env_.vol()) / 15.0); }
 
 // TODO(oren): pass the channel type rather than m
 // this should be a general goal for the registers module
@@ -399,7 +390,7 @@ double Channel::calc_freq(uint16_t period) const {
   return cpu_freq / (m * (period + 1));
 }
 
-double DMC::calc_freq(uint16_t period) const {
+double DMCUnit::calc_freq(uint16_t period) const {
   static double cpu_freq = 1.789773e6;
   return cpu_freq / period;
 }
@@ -409,6 +400,6 @@ const std::array<uint8_t, 0x20> LengthCounter::LengthTable = {
     12, 16,  24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30, // 10-1F
 };
 
-// const std::array<double, 0x10> DMC::PeriodTable;
+// const std::array<double, 0x10> DMCUnit::PeriodTable;
 
 } // namespace aud

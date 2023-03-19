@@ -35,6 +35,8 @@ struct Cartridge {
   std::vector<uint8_t> pcProm;
   mutable std::vector<uint8_t> prgRam;
 
+  const std::string romfile;
+
   friend std::ostream &operator<<(std::ostream &os, const Cartridge &in);
 };
 

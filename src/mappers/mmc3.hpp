@@ -35,7 +35,7 @@ public:
 
 private:
   uint8_t mirroring_ = 0;
-  uint8_t prgRamProtect_ = 0;
+  uint8_t prgRamProtect_ = 0b10000000;
   uint8_t irqLatchVal_ = 0;
   AddressT ppuABus_ = 0;
 

@@ -1,10 +1,8 @@
 #pragma once
 
 #include "apu_registers.hpp"
+#include "gen_audio.hpp"
 #include "mappers/base_mapper.hpp"
-// TODO(oren): I'd rather not include sdl code from here. maybe define the
-// channel classes in the audio module instead?
-#include "sdl/audio.hpp"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -106,7 +104,7 @@ private:
 class Channel {
 public:
   Channel() = delete;
-  Channel(ChannelId id, sdl_internal::Generator &g, Registers &regs)
+  Channel(ChannelId id, Generator &g, Registers &regs)
       : generator_(g), id_(id), regs_(regs),
         swp_(id == ChannelId::PULSE_1 ? -1 : 0) {}
 
@@ -117,7 +115,7 @@ public:
   bool isNoise() const { return id_ == ChannelId::NOISE; }
   void config();
   void toggle();
-  void syncVolume() { generator_.set_volume((1.0 * env_.vol()) / 15.0); }
+  void syncVolume();
 
   void tick_env() {
     env_.tick(regs_.envStart(id_));
@@ -169,7 +167,7 @@ private:
 
   double calc_freq(uint16_t period) const;
 
-  sdl_internal::Generator &generator_;
+  Generator &generator_;
   ChannelId id_;
   Registers &regs_;
   LengthCounter lc_;
@@ -255,9 +253,9 @@ private:
   uint16_t period_;
 };
 
-class DMC {
+class DMCUnit {
 public:
-  DMC(sdl_internal::DMC &gen, Registers &regs, mapper::NESMapper &mapper)
+  DMCUnit(DMC &gen, Registers &regs, mapper::NESMapper &mapper)
       : gen_(gen), regs_(regs), sbuf_(mapper, regs) {}
 
   void config();
@@ -266,7 +264,7 @@ public:
 
 private:
   double calc_freq(uint16_t period) const;
-  sdl_internal::DMC &gen_;
+  DMC &gen_;
   Registers &regs_;
   SampleBuffer sbuf_;
   SampleOutput output_;
@@ -310,9 +308,9 @@ class FrameCounter {
 public:
   FrameCounter() = default;
 
-  void inc(Channels &channels, DMC &dmc, aud::Registers &regs);
+  void inc(Channels &channels, DMCUnit &dmc, aud::Registers &regs);
 
-  uint8_t status(const Channels &channels, const DMC &dmc) const;
+  uint8_t status(const Channels &channels, const DMCUnit &dmc) const;
   // TODO(oren): when do we clear this?
   bool frameInterrupt() const { return frame_interrupt_.status; }
   bool dmcInterrupt() const { return dmc_interrupt_; }
@@ -361,7 +359,7 @@ private:
   Registers &registers_;
   Channels channels_;
   FrameCounter frame_counter_;
-  std::unique_ptr<DMC> dmc_unit_;
+  std::unique_ptr<DMCUnit> dmc_unit_;
 };
 
 } // namespace aud

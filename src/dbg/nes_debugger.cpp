@@ -12,6 +12,22 @@ namespace sys {
 NESDebugger::NESDebugger(NES &console)
     : dbg::Debugger(false, false), console_(console) {}
 
+void NESDebugger::setLogging(bool l) {
+  if (l && !logging_) {
+    auto &rom = console_.cart().romfile;
+    std::string logfile = rom;
+    auto last_slash = logfile.find_last_of('/');
+    if (last_slash != std::string::npos) {
+      logfile = "." + rom.substr(rom.find_last_of('/'), rom.size());
+    }
+    logfile += ".log";
+    std::cerr << "LOG: " << logfile << std::endl;
+    log_stream_.open(logfile);
+    assert(log_stream_);
+  }
+  logging_ = l;
+}
+
 const instr::Instruction &NESDebugger::step(const instr::Instruction &in,
                                             const cpu::CpuState &cpu_state,
                                             mem::Mapper &mapper) {
@@ -319,7 +335,7 @@ std::string NESDebugger::InstrToStr(const instr::Instruction &in) {
   case AMode::absolute: {
     auto addr = make_addr(data[1], data[2]);
     ss << "$" << std::setw(4) << addr;
-    if (in.operation != instr::Operation::jump) {
+    if (in.operation != instr::Operation::JMP) {
       ss << " = " << std::setw(2) << +cpu_read(addr);
     }
   } break;
@@ -347,7 +363,7 @@ std::string NESDebugger::InstrToStr(const instr::Instruction &in) {
       addr += console_.state().rY;
       ss << ",Y @ " << std::setw(4) << addr;
     }
-    if (in.operation != instr::Operation::jump) {
+    if (in.operation != instr::Operation::JMP) {
       ss << " = " << std::setw(2) << +cpu_read(addr);
     }
   } break;

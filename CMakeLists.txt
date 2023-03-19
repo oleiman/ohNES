@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.0)
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
-message("BUILD TYPE:  ${CMAKE_BUILD_TYPE}")
+message("BUILD TYPE: ${CMAKE_BUILD_TYPE}")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-long-long  -pedantic")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fno-sanitize=null -fno-sanitize=alignment")
@@ -11,9 +11,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 add_subdirectory(external/6502-emu)
 
-project(ohNES)
-add_executable(ohNES
-  src/main.cpp
+set(CORE_SRC
   src/system.cpp
   src/ppu_registers.cpp
   src/apu_registers.cpp
@@ -27,28 +25,35 @@ add_executable(ohNES
   src/mappers/mmc3.cpp
   src/mappers/axrom.cpp
   src/mappers/mapper_factory.cpp
-  src/sdl/audio.cpp
   src/dbg/nes_debugger.cpp
   src/ppu.cpp
   src/apu.cpp
+  src/gen_audio.cpp
   src/joypad.cpp
   src/util.cpp
+)
+
+project(ohNES)
+
+add_library(ohNESCore
+  ${CORE_SRC}
+)
+set_property(TARGET ohNESCore PROPERTY CXX_STANDARD 17)
+target_include_directories(ohNESCore PUBLIC
+  src
+)
+target_link_libraries(ohNESCore
+  6502-emu
+)
+
+add_executable(ohNES
+  src/main.cpp
+  src/sdl/audio.cpp
   src/wx_/dbg_app.cpp
   src/wx_/dbg_wxapp.cpp
 )
 
 find_package(SDL2 REQUIRED)
-# if (LINUX AND NOT APPLE)
-#   find_package(PkgConfig REQUIRED)
-#   pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
-#   target_link_directories(ohNES ${GTK3_LIBRARY_DIRS})
-#   target_include_directories(ohNES PRIVATE ${GTK3_LIBRARY_DIRS})
-#   add_definitions(${GTK3_CFLAGS_OTHER})
-# endif()
-if (APPLE)
-  find_library(APPKIT_LIB AppKit)
-  # target_link_libraries(ohNES PRIVATE ${APPKIT_LIB})
-endif()
 
 set(wxWidgets_USE_DEBUG ON)
 find_package(wxWidgets REQUIRED core base)
@@ -56,7 +61,7 @@ find_package(wxWidgets REQUIRED core base)
 include(${wxWidgets_USE_FILE})
 
 target_include_directories(ohNES PRIVATE
-  src
+  # src
   ${SDL2_INCLUDE_DIRS}
   external/inc
   ${wxWidgets_INCLUDE_DIRS}
@@ -65,14 +70,14 @@ target_include_directories(ohNES PRIVATE
 set_property(TARGET ohNES PROPERTY CXX_STANDARD 17)
 
 if (LINUX AND NOT APPLE)
-set(GPERF_LIB profiler)
+  set(GPERF_LIB profiler)
 endif()
 
 target_link_libraries(ohNES
   6502-emu
+  ohNESCore
   ${SDL2_LIBRARIES}
   ${GPERF_LIB}
-  ${APPKIT_LIB}
   ${wxWidgets_LIBRARIES}
 )
 

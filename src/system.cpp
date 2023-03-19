@@ -11,7 +11,7 @@
 using mapper::MapperFactory;
 
 namespace sys {
-NES::NES(std::string_view const &romfile, bool debug)
+NES::NES(std::string_view const &romfile, bool debug, bool quiet)
     : debug_(debug), cartridge_(romfile),
       mapper_(MapperFactory(*this, cartridge_, ppu_registers_, apu_registers_,
                             ppu_oam_, joypad_1)),
@@ -21,7 +21,9 @@ NES::NES(std::string_view const &romfile, bool debug)
   cpu_.registerTickHandler(std::bind(&NES::mapperTick, this));
   cpu_.registerTickHandler(std::bind(&NES::apuTick, this));
   cpu_.reset();
-  std::cerr << cartridge_ << std::endl;
+  if (!quiet) {
+    std::cerr << cartridge_ << std::endl;
+  }
 }
 
 void NES::step() {

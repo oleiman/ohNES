@@ -1,6 +1,7 @@
 #include "cartridge.hpp"
 
 #include <assert.h>
+#include <cstring>
 #include <iostream>
 #include <iterator>
 #include <sstream>
@@ -32,10 +33,10 @@ using std::vector;
 
 namespace cart {
 
-Cartridge::Cartridge(std::string_view const &romfile) {
+Cartridge::Cartridge(std::string_view const &romfile) : romfile(romfile) {
   std::ifstream infile(romfile.data(), std::ios::in | std::ios::binary);
   if (!infile) {
-    std::cerr << "BAD FILE" << std::endl;
+    std::cerr << "BAD FILE (" << romfile << ")" << std::endl;
     exit(1);
   }
   array<uint8_t, 16> hdr = {};
@@ -45,7 +46,7 @@ Cartridge::Cartridge(std::string_view const &romfile) {
   std::istreambuf_iterator<char> start(infile), end;
   vector<uint8_t> data(start, end);
 
-  cerr << +data.size() << endl;
+  // cerr << +data.size() << endl;
 
   auto it = data.begin();
 
@@ -78,10 +79,7 @@ Cartridge::Cartridge(std::string_view const &romfile) {
 }
 
 void Cartridge::parseHeader(array<uint8_t, 16> hdr) {
-  for (int i = 0; i < 3; ++i) {
-    cerr << hdr[i];
-  }
-  cerr << endl;
+  assert(std::strncmp((char *)&hdr[0], "NES", 3) == 0);
   assert(hdr[3] == 0x1A);
 
   prgRomSize = hdr[4] * (1 << 14);

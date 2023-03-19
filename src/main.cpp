@@ -29,27 +29,6 @@ using sys::NES;
 const char DEFAULT_PALETTE[] = "../data/2c02.palette";
 
 int main(int argc, char **argv) {
-  // std::string file;
-  // if (argc >= 2) {
-  //   file = argv[1];
-  // } else {
-  //   // TODO(oren): appkit version of NFD doesn't seem to work. I'd guess this
-  //   // has something to do with arm/x64 compatibility?
-  //   nfdchar_t *outPath = nullptr;
-  //   nfdresult_t result = NFD_OpenDialog(nullptr, nullptr, &outPath);
-  //   if (result == NFD_OKAY) {
-  //     std::cerr << "Rom Path: " << outPath << std::endl;
-  //     file = outPath;
-  //     free(outPath);
-  //   } else if (result == NFD_CANCEL) {
-  //     std::cerr << "Fun Police" << std::endl;
-  //     exit(0);
-  //   } else {
-  //     std::cerr << "File select error: " << NFD_GetError() << std::endl;
-  //     exit(1);
-  //   }
-  // }
-
   args::ArgumentParser argparse("Another NES emulator");
   args::HelpFlag help(argparse, "help", "Display this help menu",
                       {'h', "help"});
@@ -61,6 +40,7 @@ int main(int argc, char **argv) {
   args::Flag debug(debugging, "", "CPU debugger", {"debug"});
   args::Flag ppu_debug(debugging, "", "PPU debugger", {"ppu-debug"});
   args::Flag brk(debugging, "", "Immediately break", {'b', "break"});
+  args::Flag log(debugging, "", "Enable instruction logging", {"log"});
 
   try {
     argparse.ParseCLI(argc, argv);
@@ -77,7 +57,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  NES nes(romfile.Get(), debug.Get());
+  NES nes(romfile.Get(), debug.Get() || log.Get());
   std::unique_ptr<DebuggerApp> cpu_debugger;
   if (debug.Get()) {
     cpu_debugger = std::make_unique<DebuggerApp>(nes);
@@ -85,6 +65,8 @@ int main(int argc, char **argv) {
       nes.debugger().pause(true);
     }
   }
+
+  nes.debugger().setLogging(log.Get());
 
   LoadSystemPalette(DEFAULT_PALETTE);
 
@@ -140,6 +122,9 @@ int main(int argc, char **argv) {
             break;
           case SDLK_p:
             nes.debugger().cyclePalete();
+            break;
+          case SDLK_r:
+            nes.reset(true);
             break;
           case SDLK_1:
             nes.debugger().selectNametable(0);

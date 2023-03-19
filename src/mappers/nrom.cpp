@@ -12,9 +12,17 @@ void NROM::cartWrite(AddressT addr, DataT data) {
       cart_.prgRam[addr & (cart_.prgRamSize - 1)] = data;
     }
   } else { // 0x8000 <= addr < 0x10000
-    std::stringstream ss;
-    ss << "WRITE TO CART ROM 0x" << std::hex << addr;
-    throw std::runtime_error(ss.str());
+    // std::stringstream ss;
+    // ss << "WRITE TO PRG ROM 0x" << std::hex << addr;
+    // std::cerr << ss.str() << std::endl;
+    // std::raise(SIGSEGV);
+    // throw std::runtime_error(ss.str());
+
+    // NOTE(oren): some tests write to rom deliberately. this seems to be
+    // occasionally the case for certain roms, so I don't think there's any
+    // reason to report it.
+    // TODO(oren): Add some form of message logging more robust than stderr and
+    // separate from instruction logging (maybe interspersed?).
   }
 }
 
