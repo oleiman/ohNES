@@ -58,12 +58,10 @@ include(${wxWidgets_USE_FILE})
 target_include_directories(ohNES PRIVATE
   src
   ${SDL2_INCLUDE_DIRS}
-  external/nativefiledialog/src/include external/inc
+  external/inc
   ${wxWidgets_INCLUDE_DIRS}
 )
-target_link_directories(ohNES PRIVATE
-  external/nativefiledialog/build/lib/Release/x64
-)
+
 set_property(TARGET ohNES PROPERTY CXX_STANDARD 17)
 
 if (LINUX AND NOT APPLE)
@@ -74,14 +72,9 @@ target_link_libraries(ohNES
   6502-emu
   ${SDL2_LIBRARIES}
   ${GPERF_LIB}
-  nfd
   ${APPKIT_LIB}
   ${wxWidgets_LIBRARIES}
 )
-# if (LINUX AND NOT APPLE)
-#   target_link_libraries(ohNES ${GTK3_LIBRARIES})
-# endif()
-
 
 if (WITH_TESTS)
   add_subdirectory(test)

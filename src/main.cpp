@@ -8,7 +8,6 @@
 
 #include <SDL.h>
 #include <args.hxx>
-#include <nfd.h>
 
 #include "time.h"
 #include <chrono>
@@ -30,30 +29,62 @@ using sys::NES;
 const char DEFAULT_PALETTE[] = "../data/2c02.palette";
 
 int main(int argc, char **argv) {
-  std::string file;
-  if (argc >= 2) {
-    file = argv[1];
-  } else {
-    // TODO(oren): appkit version of NFD doesn't seem to work. I'd guess this
-    // has something to do with arm/x64 compatibility?
-    nfdchar_t *outPath = nullptr;
-    nfdresult_t result = NFD_OpenDialog(nullptr, nullptr, &outPath);
-    if (result == NFD_OKAY) {
-      std::cerr << "Rom Path: " << outPath << std::endl;
-      file = outPath;
-      free(outPath);
-    } else if (result == NFD_CANCEL) {
-      std::cerr << "Fun Police" << std::endl;
-      exit(0);
-    } else {
-      std::cerr << "File select error: " << NFD_GetError() << std::endl;
-      exit(1);
-    }
+  // std::string file;
+  // if (argc >= 2) {
+  //   file = argv[1];
+  // } else {
+  //   // TODO(oren): appkit version of NFD doesn't seem to work. I'd guess this
+  //   // has something to do with arm/x64 compatibility?
+  //   nfdchar_t *outPath = nullptr;
+  //   nfdresult_t result = NFD_OpenDialog(nullptr, nullptr, &outPath);
+  //   if (result == NFD_OKAY) {
+  //     std::cerr << "Rom Path: " << outPath << std::endl;
+  //     file = outPath;
+  //     free(outPath);
+  //   } else if (result == NFD_CANCEL) {
+  //     std::cerr << "Fun Police" << std::endl;
+  //     exit(0);
+  //   } else {
+  //     std::cerr << "File select error: " << NFD_GetError() << std::endl;
+  //     exit(1);
+  //   }
+  // }
+
+  args::ArgumentParser argparse("Another NES emulator");
+  args::HelpFlag help(argparse, "help", "Display this help menu",
+                      {'h', "help"});
+  args::Group required(argparse, "\nRequired:", args::Group::Validators::All);
+  args::ValueFlag<std::string> romfile(required, "romfile", "iNES file to load",
+                                       {'r', "rom"});
+
+  args::Group debugging(argparse, "Debugging:");
+  args::Flag debug(debugging, "", "CPU debugger", {"debug"});
+  args::Flag ppu_debug(debugging, "", "PPU debugger", {"ppu-debug"});
+  args::Flag brk(debugging, "", "Immediately break", {'b', "break"});
+
+  try {
+    argparse.ParseCLI(argc, argv);
+  } catch (args::Help) {
+    std::cout << argparse;
+    return 0;
+  } catch (args::ParseError e) {
+    std::cerr << e.what() << std::endl << std::endl;
+    std::cerr << argparse;
+    return 1;
+  } catch (args::ValidationError e) {
+    std::cerr << e.what() << std::endl;
+    std::cerr << argparse;
+    return 1;
   }
 
-  NES nes(file);
-  // nes.debug_ = true;
-  std::unique_ptr<DebuggerApp> debug_app = std::make_unique<DebuggerApp>(nes);
+  NES nes(romfile.Get(), debug.Get());
+  std::unique_ptr<DebuggerApp> cpu_debugger;
+  if (debug.Get()) {
+    cpu_debugger = std::make_unique<DebuggerApp>(nes);
+    if (brk.Get()) {
+      nes.debugger().pause(true);
+    }
+  }
 
   LoadSystemPalette(DEFAULT_PALETTE);
 
@@ -65,10 +96,15 @@ int main(int argc, char **argv) {
   }
   {
 
-    std::unique_ptr<Display<sys::DBG_W, sys::DBG_H>> debug_display = nullptr;
+    std::unique_ptr<Display<sys::DBG_W, sys::DBG_H>> ppu_debugger = nullptr;
 
-    auto display =
-        std::make_unique<Display<vid::WIDTH, vid::HEIGHT, SCALE>>("NES", file);
+    if (ppu_debug.Get()) {
+      ppu_debugger = std::make_unique<Display<sys::DBG_W, sys::DBG_H>>(
+          "DBG", "Debug: " + romfile.Get());
+    }
+
+    auto display = std::make_unique<Display<vid::WIDTH, vid::HEIGHT, SCALE>>(
+        "NES", romfile.Get());
 
     auto audio = std::make_unique<Audio>();
     audio->init();
@@ -81,8 +117,8 @@ int main(int argc, char **argv) {
       while (SDL_PollEvent(&event) != 0) {
         // handle window events
         display->handleEvent(event);
-        if (nes.debug_) {
-          debug_display->handleEvent(event);
+        if (ppu_debugger != nullptr) {
+          ppu_debugger->handleEvent(event);
         }
 
         switch (event.type) {
@@ -95,16 +131,11 @@ int main(int argc, char **argv) {
             display->focus();
             break;
           case SDLK_d:
-            // TODO(oren): do this initialization elsewhere, D should just flip
-            // the flag
-            if (debug_display == nullptr) {
-              debug_display = std::make_unique<Display<sys::DBG_W, sys::DBG_H>>(
-                  "DBG", "Debug: " + file);
-              debug_app->App()->Show(true);
-              nes.debug_ = true;
-            } else {
-              debug_app->App()->Show(true);
-              debug_display->focus();
+            if (cpu_debugger != nullptr) {
+              cpu_debugger->App()->Show(true);
+            }
+            if (ppu_debugger != nullptr) {
+              ppu_debugger->focus();
             }
             break;
           case SDLK_p:
@@ -167,9 +198,9 @@ int main(int argc, char **argv) {
       } while (!nes.render(display->renderBuf));
 
       display->update();
-      if (nes.debug_ && debug_display->isShown()) {
-        nes.debugger().render(debug_display->renderBuf);
-        debug_display->update();
+      if (ppu_debugger != nullptr && ppu_debugger->isShown()) {
+        nes.debugger().render(ppu_debugger->renderBuf);
+        ppu_debugger->update();
       }
 
       if (!display->isShown()) {

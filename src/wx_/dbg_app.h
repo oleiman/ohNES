@@ -20,6 +20,5 @@ private:
   char **v = nullptr;
   std::thread _app_thread;
   wx_internal::DbgWxApp *app;
-  sys::NES &_console;
 };
 } // namespace dbg
