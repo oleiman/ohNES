@@ -20,7 +20,7 @@ public:
   ~NES() = default;
   void step();
   bool render(RenderBuffer &renderBuf);
-  void reset() { cpu_.reset(); };
+  void reset(bool force = false) { cpu_.reset(force); };
   cpu::CpuState const &state() { return cpu_.state(); }
   ctrl::JoyPad joypad_1;
   bool &irqPin() { return cpu_.irqPin(); }

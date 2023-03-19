@@ -31,6 +31,7 @@ wxBEGIN_EVENT_TABLE(DebuggerFrame, wxFrame)
   EVT_BUTTON(constants::BUTTON_PAUSE, DebuggerFrame::OnPause)
   EVT_BUTTON(constants::BUTTON_STEP, DebuggerFrame::OnStep)
   EVT_BUTTON(constants::BUTTON_RUN, DebuggerFrame::OnRun)
+  EVT_BUTTON(constants::BUTTON_RESET, DebuggerFrame::OnReset)
   EVT_BUTTON(constants::BUTTON_LOG, DebuggerFrame::OnLogStart)
   EVT_BUTTON(constants::BUTTON_LOG_STOP, DebuggerFrame::OnLogStop)
   EVT_BUTTON(constants::BUTTON_SET_BP, DebuggerFrame::OnSetBreakpoint)
@@ -117,6 +118,8 @@ DebuggerFrame::DebuggerFrame() : wxFrame(NULL, wxID_ANY, "ohNES CPU debugger") {
                   wxSizerFlags().Border(wxALL, 7));
   button_box->Add(new wxButton(p, constants::BUTTON_RUN, "Run"),
                   wxSizerFlags().Border(wxALL, 7));
+  button_box->Add(new wxButton(p, constants::BUTTON_RESET, "Reset"),
+                  wxSizerFlags().Border(wxALL, 7));
 
   wxBoxSizer *button_box2 = new wxBoxSizer(wxHORIZONTAL);
   button_box2->Add(new wxButton(p, constants::BUTTON_LOG, "Start Log"),
@@ -191,6 +194,9 @@ void DebuggerFrame::OnStep(wxCommandEvent &event) {
 void DebuggerFrame::OnRun(wxCommandEvent &event) {
   _console->debugger().pause(false);
 }
+
+void DebuggerFrame::OnReset(wxCommandEvent &event) { _console->reset(true); }
+
 void DebuggerFrame::OnLogStart(wxCommandEvent &event) {
   _console->debugger().setLogging(true);
 }

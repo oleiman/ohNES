@@ -127,6 +127,7 @@ public:
   void OnPause(wxCommandEvent &event);
   void OnStep(wxCommandEvent &event);
   void OnRun(wxCommandEvent &event);
+  void OnReset(wxCommandEvent &event);
   void OnLogStart(wxCommandEvent &event);
   void OnLogStop(wxCommandEvent &event);
   void OnSetBreakpoint(wxCommandEvent &event);
@@ -181,6 +182,7 @@ enum {
   BUTTON_PAUSE = wxID_HIGHEST + 1,
   BUTTON_STEP,
   BUTTON_RUN,
+  BUTTON_RESET,
   BUTTON_LOG,
   BUTTON_LOG_STOP,
   BUTTON_SET_BP,
