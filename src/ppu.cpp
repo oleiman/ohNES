@@ -165,7 +165,7 @@ void PPU::evaluateSprites() {
       oam_m_++;
     } else if (y_coord <= registers_.scanline() &&
                registers_.scanline() < (y_coord + registers_.spriteSize())) {
-      assert(4 * sec_oam_n_ + oam_m_ < secondary_oam_.size());
+      assert(4u * sec_oam_n_ + oam_m_ < secondary_oam_.size());
       secondary_oam_[4 * sec_oam_n_ + oam_m_] = oam_[4 * oam_n_ + oam_m_];
       sprites_staging_[sec_oam_n_].s.idx = oam_n_;
       ++oam_m_;
@@ -176,7 +176,7 @@ void PPU::evaluateSprites() {
       }
     } else {
       // TODO(oren): actually supposed to leave this as the out of range y-coord
-      assert(4 * sec_oam_n_ < secondary_oam_.size());
+      assert(4u * sec_oam_n_ < secondary_oam_.size());
       secondary_oam_[4 * sec_oam_n_] = 0xFF;
       oam_n_++;
       oam_m_ = 0;
@@ -440,7 +440,7 @@ inline std::array<uint8_t, 4> PPU::spritePalette(uint8_t pidx) {
 }
 
 void PPU::set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> rgb) {
-  int pi = y * WIDTH + x;
+  size_t pi = y * WIDTH + x;
 
   std::array<int, 3> emph = {
       registers_.emphasizeRed() ? 1 : 0,
@@ -450,9 +450,9 @@ void PPU::set_pixel(uint8_t x, uint8_t y, std::array<uint8_t, 3> rgb) {
 
   constexpr int amt = 16;
 
-  for (int i = 0; i < rgb.size(); ++i) {
+  for (size_t i = 0; i < rgb.size(); ++i) {
     int16_t val = static_cast<int16_t>(rgb[i]);
-    for (int j = 0; j < emph.size(); ++j) {
+    for (size_t j = 0; j < emph.size(); ++j) {
       if (j == i) {
         val += amt * emph[j];
         val = std::min(val, static_cast<int16_t>(0xFF));

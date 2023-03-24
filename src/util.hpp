@@ -1,8 +1,10 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <ostream>
 
 namespace util {

@@ -13,8 +13,8 @@ class NESDebugger;
 }
 
 namespace vid {
-constexpr int WIDTH = 256;
-constexpr int HEIGHT = 240;
+constexpr size_t WIDTH = 256;
+constexpr size_t HEIGHT = 240;
 
 void LoadSystemPalette(const std::string &fname);
 
