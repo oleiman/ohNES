@@ -31,13 +31,21 @@ rm -rf build
 mkdir build
 pushd build
 
-echo ${mode-'No build type specified'}
-echo ${test='No tests'}
+echo "Build Type: ${mode-No build type specified}"
+echo "WITH_APP=${app=ON}"
+echo "WITH_TESTS=${test=OFF}"
 
 export CC=clang
 export CXX=clang++
-cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=${mode:-Release} -DWITH_TESTS=${test=-OFF} -DwxWidgets_ROOT_DIR=${wx_ROOT:-$HOME/src/wxWidgets-3.2.2/} -Wno-dev
-make -j10
+cmake .. \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+      -DCMAKE_BUILD_TYPE=${mode:-Release} \
+      -DWITH_TESTS=${test=-OFF} \
+      -DWITH_APP=${app=-ON} \
+      -DwxWidgets_ROOT_DIR=${wx_ROOT:-$HOME/src/wxWidgets-3.2.2/} \
+      -Wno-dev
+
+make -j4
 
 cp compile_commands.json ../
 

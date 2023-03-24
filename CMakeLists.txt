@@ -46,40 +46,40 @@ target_link_libraries(ohNESCore
   6502-emu
 )
 
-add_executable(ohNES
-  src/main.cpp
-  src/sdl/audio.cpp
-  src/wx_/dbg_app.cpp
-  src/wx_/dbg_wxapp.cpp
-)
+if (WITH_APP)
+  add_executable(ohNES
+    src/main.cpp
+    src/sdl/audio.cpp
+    src/wx_/dbg_app.cpp
+    src/wx_/dbg_wxapp.cpp
+  )
 
-find_package(SDL2 REQUIRED)
+  find_package(SDL2 REQUIRED)
 
-set(wxWidgets_USE_DEBUG ON)
-find_package(wxWidgets REQUIRED core base)
+  # set(wxWidgets_USE_DEBUG ON)
+  find_package(wxWidgets REQUIRED core base)
 
-include(${wxWidgets_USE_FILE})
+  include(${wxWidgets_USE_FILE})
 
-target_include_directories(ohNES PRIVATE
-  # src
-  ${SDL2_INCLUDE_DIRS}
-  external/inc
-  ${wxWidgets_INCLUDE_DIRS}
-)
+  target_include_directories(ohNES PRIVATE
+    ${SDL2_INCLUDE_DIRS}
+    external/inc
+    ${wxWidgets_INCLUDE_DIRS}
+  )
 
-set_property(TARGET ohNES PROPERTY CXX_STANDARD 17)
+  set_property(TARGET ohNES PROPERTY CXX_STANDARD 17)
 
-if (LINUX AND NOT APPLE)
-  set(GPERF_LIB profiler)
+  if (LINUX AND NOT APPLE)
+    set(GPERF_LIB profiler)
+  endif()
+
+  target_link_libraries(ohNES
+    ohNESCore
+    ${SDL2_LIBRARIES}
+    ${GPERF_LIB}
+    ${wxWidgets_LIBRARIES}
+  )
 endif()
-
-target_link_libraries(ohNES
-  6502-emu
-  ohNESCore
-  ${SDL2_LIBRARIES}
-  ${GPERF_LIB}
-  ${wxWidgets_LIBRARIES}
-)
 
 if (WITH_TESTS)
   add_subdirectory(test)
