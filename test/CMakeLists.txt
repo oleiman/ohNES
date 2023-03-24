@@ -34,7 +34,7 @@ function(test_target)
 
 endfunction()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_FLAGS
   -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
@@ -88,16 +88,12 @@ test_target(
   ROMS mmc3_test_2/rom_singles/*.nes
 )
 
-add_custom_target(test
-  COMMAND ./cpu_test
-  COMMAND ./ppu_test
-  COMMAND ./apu_test
-  COMMAND ./mapper_test
-)
-
-message("TEST TARGETS: ${TARGETS}")
+message("TESTS: ${TARGETS}")
 include(GoogleTest)
-gtest_discover_tests(${TARGETS})
+
+foreach(test_exe ${TARGETS})
+  gtest_discover_tests(${test_exe})
+endforeach()
 
 
 

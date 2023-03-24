@@ -6,6 +6,8 @@
 #include "ppu_registers.hpp"
 #include "util.hpp"
 
+#include <atomic>
+
 namespace sys {
 class NES;
 
@@ -73,7 +75,7 @@ public:
     breakpoints_.push_back(std::make_unique<T>(args...));
   }
 
-  void disableBreakpoint(int i) {
+  void disableBreakpoint(size_t i) {
     if (0 <= i && i < breakpoints_.size()) {
       breakpoints_[i]->enable(false);
     }

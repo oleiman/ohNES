@@ -38,7 +38,7 @@ project(ohNES)
 add_library(ohNESCore
   ${CORE_SRC}
 )
-set_property(TARGET ohNESCore PROPERTY CXX_STANDARD 17)
+set_property(TARGET ohNESCore PROPERTY CXX_STANDARD 20)
 target_include_directories(ohNESCore PUBLIC
   src
 )
@@ -81,6 +81,7 @@ if (WITH_APP)
   )
 endif()
 
-if (WITH_TESTS)
+if (WITH_GTESTS)
+  enable_testing()
   add_subdirectory(test)
 endif()

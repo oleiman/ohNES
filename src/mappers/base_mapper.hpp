@@ -146,12 +146,12 @@ public:
   }
 
   DataT oam_read(AddressT addr) const override {
-    assert(addr < ppu_oam_.size());
+    assert(addr < static_cast<AddressT>(ppu_oam_.size()));
     return ppu_oam_[addr];
   }
 
   void oam_write(AddressT addr, DataT data) override {
-    assert(addr < ppu_oam_.size());
+    assert(addr < static_cast<AddressT>(ppu_oam_.size()));
     ppu_oam_[addr] = data;
   }
 
@@ -160,7 +160,7 @@ protected:
 
   void oamDma(AddressT base) {
     uint8_t oam_base = ppu_reg_.oamAddr() & (ppu_oam_.size() - 1);
-    for (int i = 0; i < ppu_oam_.size(); ++i) {
+    for (size_t i = 0; i < ppu_oam_.size(); ++i) {
       auto idx = (oam_base + i) & (ppu_oam_.size() - 1);
       assert(idx < ppu_oam_.size());
       ppu_oam_[idx] = internal_[base | i];

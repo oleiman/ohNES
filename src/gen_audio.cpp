@@ -15,8 +15,8 @@ int16_t Triangle::tri(int32_t t) {
 }
 
 void Triangle::init_table() {
-  for (int16_t i = 0; i < table_.size(); ++i) {
-    table_[i] = tri(i);
+  for (size_t i = 0; i < table_.size(); ++i) {
+    table_[i] = tri(static_cast<int32_t>(i));
   }
 }
 
@@ -46,8 +46,8 @@ void Generator::write_chunk(int16_t *stream, long begin, long end, long len,
   double phase_inc = (pitch / d_SR) * d_TL;
   for (int i = 0; i < len; ++i) {
     phase += phase_inc;
-    int phase_int = static_cast<int>(phase);
-    if (phase >= table_.size()) {
+    size_t phase_int = static_cast<size_t>(phase);
+    if (phase >= static_cast<double>(table_.size())) {
       double diff = phase - table_.size();
       phase = diff;
       phase_int = static_cast<int>(phase);
@@ -82,7 +82,7 @@ void Noise::init_table() {
 
   table_[0] = dist(dev);
 
-  for (int i = 1; i < table_.size(); ++i) {
+  for (size_t i = 1; i < table_.size(); ++i) {
     // table_[i] = dist(dev);
     auto val = dist(dev);
     int32_t next = static_cast<int32_t>(table_[i - 1]) + val;

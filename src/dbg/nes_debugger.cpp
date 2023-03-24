@@ -4,6 +4,7 @@
 #include "util.hpp"
 
 #include <algorithm>
+#include <bitset>
 
 using vid::PPU;
 
@@ -128,7 +129,7 @@ void NESDebugger::draw_sprites() {
   // evaluate sprites (primary OAM)
   const auto &oam = console_.ppu_oam_;
   uint8_t sprite_size = console_.ppu_registers_.spriteSize();
-  uint8_t n_sprites = oam.size() >> 2;
+  uint8_t n_sprites = static_cast<uint8_t>(oam.size() >> 2);
   std::array<uint8_t, 4> palette = {};
 
   uint16_t vert_offset = 272;
@@ -139,7 +140,8 @@ void NESDebugger::draw_sprites() {
     uint8_t sprite_base = i << 2;
     // uint8_t sprite_y = oam[sprite_base];
     uint8_t tile_idx = oam[sprite_base + 1];
-    PPU::Sprite sprite = {.s = {.attrs.v = oam[sprite_base + 2]}};
+    PPU::Sprite sprite; // = {.s.attrs.v = oam[sprite_base + 2]};
+    sprite.s.attrs.v = oam[sprite_base + 2];
     uint8_t pidx = sprite.s.attrs.s.palette_i;
     palette[0] = palette_read(0x3f00);
     palette[1] = palette_read(0x3f11 + pidx);
@@ -241,7 +243,7 @@ void NESDebugger::set_pixel(int x, int y, std::array<uint8_t, 3> const &rgb) {
   // add a little space around the edge
   x += 16;
   y += 16;
-  int pi = y * DBG_W + x;
+  size_t pi = y * DBG_W + x;
   if (pi < frameBuffer.size()) {
     std::copy(std::begin(rgb), std::end(rgb), std::begin(frameBuffer[pi]));
   }
@@ -304,13 +306,13 @@ std::string NESDebugger::InstrToStr(const instr::Instruction &in) {
 
   ss << "0x" << std::hex << std::setfill('0') << std::setw(4) << +in.pc << "\t";
   std::array<int, 3> data = {-1, -1, -1};
-  for (int i = 0; i < in.size; ++i) {
+  for (size_t i = 0; i < in.size; ++i) {
     data[i] = (cpu_read(in.pc + i));
   }
 
   ss << std::uppercase;
 
-  for (int i = 0; i < data.size(); ++i) {
+  for (size_t i = 0; i < data.size(); ++i) {
     ss << " ";
     auto b = data[i];
     if (b >= 0) {
