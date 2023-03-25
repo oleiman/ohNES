@@ -60,19 +60,17 @@ public:
 
   void insert(const T &item) {
     store_[tail_] = std::make_unique<T>(item);
-    std::cout << *store_[tail_] << std::endl;
     ++tail_;
     if (tail_ == Cap) {
       tail_ = 0;
     }
-    if (tail_ == head_) {
-      ++head_;
-    }
-    if (head_ == Cap) {
-      head_ = 0;
-    }
     if (size_ < Cap) {
       ++size_;
+    } else {
+      ++head_;
+      if (head_ == Cap) {
+        head_ = 0;
+      }
     }
   }
 
@@ -80,7 +78,11 @@ public:
 
   const T &back() const {
     assert(size_ > 0);
-    return *store_[tail_ - 1];
+    if (tail_ == 0) {
+      return *store_[size_ - 1];
+    } else {
+      return *store_[tail_ - 1];
+    }
   }
 
   const T &operator[](size_t i) const {
@@ -91,12 +93,15 @@ public:
 
   friend std::ostream &operator<<(std::ostream &os, const RingBuf &rb) {
     auto idx = rb.head_;
-    while (idx != rb.tail_ && rb.store_[idx] != nullptr) {
-      os << idx << ": " << *rb.store_[idx] << "\n";
+    int rel_i = 0;
+    os << "Size: " << +rb.size_ << std::endl;
+    while ((idx != rb.tail_ || rel_i == 0) && rb.store_[idx] != nullptr) {
+      os << "[" << +rel_i << "] " << idx << ": " << *rb.store_[idx] << "\n";
       ++idx;
       if (idx == Cap) {
         idx = 0;
       }
+      ++rel_i;
     }
     return os;
   }

@@ -71,7 +71,7 @@ test_target(
   NAME apu_test
   SRC src/apu_tests.cpp
   ROMS apu_test/rom_singles/*.nes
-       # apu_mixer/*.nes
+       apu_mixer/*.nes
 
 )
 
@@ -86,6 +86,12 @@ test_target(
   NAME mapper_test
   SRC src/mapper_tests.cpp
   ROMS mmc3_test_2/rom_singles/*.nes
+)
+
+test_target(
+  NAME general_test
+  SRC src/general_tests.cpp
+  ROMS ""
 )
 
 message("TESTS: ${TARGETS}")

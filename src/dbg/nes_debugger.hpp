@@ -61,6 +61,7 @@ public:
   Mode mode() const { return dbg_mode; }
 
   const InstructionCache &cache() const { return instr_cache_; }
+  instr::Instruction history(int idx) const;
 
   instr::Instruction decode(AddressT pc);
   std::string InstrToStr(const instr::Instruction &instr);

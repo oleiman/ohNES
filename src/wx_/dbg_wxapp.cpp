@@ -50,6 +50,8 @@ bool DbgWxApp::OnInit() {
 
   frame = new DebuggerFrame();
 
+  frame->Fit();
+
   frame->Show(false);
 
   return true;
@@ -175,6 +177,8 @@ DebuggerFrame::DebuggerFrame() : wxFrame(NULL, wxID_ANY, "ohNES CPU debugger") {
 
   _bp_disable = new wxNumberEntryDialog(p, "Select", "Index",
                                         "Disable Breakpoint", -1, -1, 31);
+
+  topsizer->Fit(this);
 }
 
 void DebuggerFrame::OnQuit(wxCommandEvent &WXUNUSED(event)) { Close(true); }
@@ -239,19 +243,27 @@ void DebuggerFrame::OnMuteNoise(wxCommandEvent &event) {
 }
 
 void TraceScrollWindow::OnDraw(wxDC &dc) {
-  dc.SetTextForeground(*wxBLUE);
   int y = 0;
   sys::NESDebugger::AddressT pc_offset = 0;
-  for (int line = 0; line < n_lines; ++line) {
-    if (line == 1) {
+  for (int line = -n_lines / 4; line < n_lines; ++line) {
+    if (line < 0) {
+      dc.SetTextForeground(*wxRED);
+    } else if (line > 0) {
       dc.SetTextForeground(*wxBLACK);
+    } else {
+      dc.SetTextForeground(*wxBLUE);
     }
+
     int yPhys;
     CalcScrolledPosition(0, y, NULL, &yPhys);
     std::stringstream ss;
-    instr::Instruction in(console->debugger().decode(pc_offset));
-    pc_offset += in.size;
-    ss << console->debugger().InstrToStr(in);
+    if (line >= 0) {
+      instr::Instruction in(console->debugger().decode(pc_offset));
+      pc_offset += in.size;
+      ss << console->debugger().InstrToStr(in);
+    } else {
+      ss << console->debugger().InstrToStr(console->debugger().history(line));
+    }
     dc.DrawText(wxString::Format("%s", ss.str().c_str()), 0, y);
     y += line_height;
   }

@@ -1,4 +1,4 @@
-#include "util.hpp"
+#include "test_util.hpp"
 
 TEST(CpuTest, Nestest) {
   NES nes("rom/nestest.nes", false, true);

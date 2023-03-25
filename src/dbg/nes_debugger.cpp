@@ -46,6 +46,10 @@ const instr::Instruction &NESDebugger::step(const instr::Instruction &in,
     setMode(Mode::PAUSE);
   }
 
+  if (!in.discard) {
+    instr_cache_.insert(in);
+  }
+
   if (logging_ && log_stream_) {
     log_stream_ << std::left << std::setw(40) << InstrToStr(in) << CpuStateStr()
                 << " (C: " << in.issueCycle << ")\n";
@@ -277,6 +281,17 @@ uint8_t NESDebugger::cpu_read(uint16_t addr) {
 
 uint8_t NESDebugger::palette_read(uint16_t addr) {
   return console_.mapper_->palette_read(addr);
+}
+
+instr::Instruction NESDebugger::history(int idx) const {
+  if (std::abs(idx) > instr_cache_.size()) {
+    return instr::Instruction(0, 0, 0);
+  }
+  if (idx < 0) {
+    idx = instr_cache_.size() - std::abs(idx);
+  }
+
+  return instr_cache_[idx];
 }
 
 instr::Instruction NESDebugger::decode(AddressT offset) {

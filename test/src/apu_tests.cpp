@@ -1,4 +1,4 @@
-#include "util.hpp"
+#include "test_util.hpp"
 
 TEST(ApuTest, LengthCounter) {
   BLARGG_TEST_MEM("rom/1-len_ctr.nes", 0x6000, 0x00);

@@ -31,7 +31,7 @@ void check_reset(NES &nes, uint16_t result_base, bool &requested,
     requested = true;
     tp = std::chrono::steady_clock::now();
   } else if (requested && std::chrono::steady_clock::now() - tp >
-                              std::chrono::milliseconds(100)) {
+                              std::chrono::milliseconds(200)) {
     nes.reset(true);
     requested = false;
   }

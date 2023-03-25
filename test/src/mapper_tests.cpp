@@ -1,4 +1,4 @@
-#include "util.hpp"
+#include "test_util.hpp"
 
 // TODO(oren): these never show the "0x80 in $6000" behavior to indicate that
 // the test is started. No clue how to detect start/stop yet, so they just hang

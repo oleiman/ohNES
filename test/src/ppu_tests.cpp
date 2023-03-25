@@ -1,4 +1,4 @@
-#include "util.hpp"
+#include "test_util.hpp"
 
 TEST(PpuTest, VblNmi) {
   BLARGG_TEST_MEM("rom/01-vbl_basics.nes", 0x6000, 0x00);
