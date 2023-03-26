@@ -399,13 +399,15 @@ void PPU::vBlankLine() {
     if (registers_.readPending()) {
       auto addr = registers_.vRamAddr();
       registers_.putData(readByte(addr));
+      // make sure we update the address bus after incrementing the vram addr
+      mapper_.setPpuABus(registers_.vRamAddr());
     } else if (registers_.writePending()) {
       auto addr = registers_.vRamAddr();
       auto data = registers_.getData();
       writeByte(addr, data);
+      mapper_.setPpuABus(registers_.vRamAddr());
     }
   }
-  mapper_.setPpuABus(registers_.vRamAddr());
 }
 
 bool PPU::rendering() {

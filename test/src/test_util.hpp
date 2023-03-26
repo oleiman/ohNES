@@ -21,7 +21,10 @@ bool is_test_complete(NES &nes, uint16_t result_base) {
       nes.mapper().read(result_base + 2, true),
       nes.mapper().read(result_base + 3, true),
   };
-  return std::strncmp((char *)mark, (char *)gold, 3) == 0 && status < 0x80;
+  bool valid = std::strncmp((char *)mark, (char *)gold, 3) == 0;
+  bool complete = valid && status < 0x80;
+
+  return complete;
 }
 
 void check_reset(NES &nes, uint16_t result_base, bool &requested,

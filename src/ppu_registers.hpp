@@ -23,6 +23,10 @@ class NESDebugger;
 namespace vid {
 
 class Registers {
+  static constexpr int PPU_CLOCK_SPEED_HZ = 5369318;
+  static constexpr int CY_600MS = PPU_CLOCK_SPEED_HZ / 1000 * 600;
+  static constexpr uint16_t PPU_AMASK = 0x3FFF;
+  static constexpr uint16_t PALETTE_BASE = 0x3F00;
 
 public:
   enum CName {
@@ -137,6 +141,7 @@ public:
     }
   }
   uint16_t vRamAddr();
+
   /*END Address Accessors ***/
 
   /*** Data Port ***/
@@ -165,6 +170,20 @@ private:
     uint8_t NN : 2;
     uint8_t YYYYY : 5;
     uint8_t XXXXX : 5;
+
+    uint16_t vram_addr() {
+      uint16_t addr = ((static_cast<uint16_t>(yyy & 0b011) << 12) |
+                       (static_cast<uint16_t>(NN) << 10) |
+                       (static_cast<uint16_t>(YYYYY) << 5) |
+                       static_cast<uint16_t>(XXXXX) | 0);
+      // mask off the most significant bit
+      return addr & PPU_AMASK;
+    }
+
+    void inc(uint8_t v) { vram_inc_ += v; }
+
+  private:
+    uint16_t vram_inc_ = 0;
   };
 
   //  https://forums.nesdev.org/viewtopic.php?t=21527
@@ -172,9 +191,66 @@ private:
   scroll_var V;
   uint8_t x;
 
+  void incVRamAddr();
+
   std::array<uint8_t, 8> regs_{};
-  bool addr_latch_ = false;
-  uint8_t io_latch_ = 0;
+  bool write_toggle_ = false;
+  struct {
+
+    void write(uint8_t val) {
+      refresh_.fill(cycle_);
+      val_ = val;
+    }
+
+    uint8_t read(CName reg, uint8_t result = 0x00, bool isPalData = false) {
+      switch (reg) {
+      case PPUSTATUS:
+        refresh_bits(result, 5, 8);
+        break;
+      case OAMDATA:
+        refresh_bits(result, 0, 8);
+      case PPUDATA:
+        if (isPalData) {
+          refresh_bits(result, 0, 6);
+        } else {
+          refresh_bits(result, 0, 8);
+        }
+        break;
+      default:
+        break;
+      }
+      return val_;
+    }
+
+    void tick() {
+      ++cycle_;
+      for (uint16_t i = 0; i < refresh_.size(); ++i) {
+        // TODO(oren): could do this branchless
+        if (cycle_ - refresh_[i] > CY_600MS) {
+          // bit (i-1) decays to 0
+          val_ &= (0xFF ^ (1 << i));
+        }
+      }
+    }
+
+  private:
+    void refresh_bits(uint8_t in, uint8_t lo, uint8_t hi) {
+      assert(lo < hi && hi <= 8);
+      for (int i = lo; i < hi; ++i) {
+        uint8_t in_bit = (in & (1 << i));
+        if (in_bit) {
+          val_ |= in_bit;
+        } else {
+          val_ &= (0xFF ^ (1 << i));
+        }
+        refresh_[i] = cycle_;
+      }
+    }
+    uint8_t val_ = 0;
+    std::array<unsigned long, 8> refresh_ = {};
+    unsigned long cycle_ = 0;
+  } io_latch_;
+
   uint16_t vram_addr_ = 0x0000;
   bool write_pending_ = false;
   uint8_t write_value_ = 0x00;
@@ -260,6 +336,9 @@ inline uint8_t Registers::scrollY() {
   return (((V.NN >> 1) & 0b1) * 256) + (V.YYYYY * 8) + V.yyy;
 }
 inline uint16_t Registers::vRamAddr() { return vram_addr_; }
+inline void Registers::incVRamAddr() {
+  vram_addr_ = (vram_addr_ + vRamAddrInc()) & PPU_AMASK;
+}
 
 inline bool Registers::writePending() { return write_pending_; }
 inline bool Registers::readPending() { return read_pending_; }

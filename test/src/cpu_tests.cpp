@@ -45,9 +45,7 @@ TEST(CpuTest, BranchTiming) {
 
 TEST(CpuTest, DummyWrites) {
   BLARGG_TEST("rom/cpu_dummy_writes_oam.nes");
-
-  // NOTE(oren): requires open bus behavior to work correctly
-  // BLARGG_TEST("rom/cpu_dummy_writes_ppumem.nes");
+  BLARGG_TEST("rom/cpu_dummy_writes_ppumem.nes");
 }
 
 TEST(CpuTest, CpuReset) {

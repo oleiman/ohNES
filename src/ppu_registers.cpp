@@ -10,53 +10,46 @@ namespace vid {
 void Registers::write(CName r, uint8_t val, mapper::NESMapper &mapper) {
   // store lower 5 bits of data  in the status register
   regs_[PPUSTATUS] &= (0b11100000 | (val & 0b00011111));
-  // also store the write value to the i/o latch
-  io_latch_ = val;
+  // also store the write value to the i/o latch, always refreshing
+  io_latch_.write(val);
 
   if (!Writeable[r]) {
-    std::cerr << "WARNING: Attempt to write to read-only PPU Register " +
-                     to_string(r)
-              << std::endl;
     return;
   }
 
   write_pending_ = false;
 
   if (r == PPUSCROLL) {
-    if (!addr_latch_) {
+    if (!write_toggle_) {
       T.XXXXX = val >> 3;
       x = val & 0b111;
     } else {
       T.YYYYY = val >> 3;
       T.yyy = val & 0b111;
     }
-    addr_latch_ = !addr_latch_;
+    write_toggle_ = !write_toggle_;
   } else if (r == PPUADDR) {
-    if (!addr_latch_) {
-      vram_addr_ = 0x0000;
-      // NOTE(oren): lowerpp 6 bits
-      vram_addr_ |= (val & 0x3F);
-      vram_addr_ <<= 8;
-      mapper.setPpuABus(vram_addr_);
+    if (!write_toggle_) {
       T.yyy = (val >> 4) & 0b11;
       T.NN = (val >> 2) & 0b11;
       T.YYYYY &= 0b111;
       T.YYYYY |= (val & 0b11) << 3;
+      mapper.setPpuABus(T.vram_addr() & 0xFF00);
     } else {
-      vram_addr_ |= val;
-      mapper.setPpuABus(vram_addr_);
       T.YYYYY &= (0b11000);
       T.YYYYY |= (val >> 5) & 0b111;
       T.XXXXX = val & 0b11111;
       syncScroll();
+      vram_addr_ = V.vram_addr();
+      mapper.setPpuABus(vram_addr_);
     }
-    addr_latch_ = !addr_latch_;
+    write_toggle_ = !write_toggle_;
   } else if (r == PPUDATA) {
     // If we're writing to palette ram, perform the write right away,
     // increment the vram addr, and suppress the usual VRAM write
-    if ((vram_addr_ & 0x3F00) == 0x3F00) {
+    if ((vram_addr_ & PALETTE_BASE) == PALETTE_BASE) {
       mapper.palette_write(vram_addr_, val);
-      vram_addr_ += vRamAddrInc();
+      incVRamAddr();
       write_pending_ = false;
     } else {
       write_pending_ = true;
@@ -92,17 +85,20 @@ void Registers::write(CName r, uint8_t val, mapper::NESMapper &mapper) {
 
 uint8_t Registers::read(CName r, mapper::NESMapper &mapper) {
   if (!Readable[r]) {
-    return io_latch_;
+    // NOTE(oren): for non-readable regs, don't refresh the latch
+    return io_latch_.read(r);
   }
 
   read_pending_ = false;
+
+  bool palette_read = false;
 
   auto result = regs_[r];
   // TODO(oren): Refer to wiki for timing concerns, specifically around reading
   // from palette ram
   if (r == PPUSTATUS) {
     clearVBlankStarted();
-    addr_latch_ = false;
+    write_toggle_ = false;
   } else if (r == PPUDATA) {
 
     // CPU reads from PPUDATA
@@ -115,29 +111,35 @@ uint8_t Registers::read(CName r, mapper::NESMapper &mapper) {
     // which sets the flag again, triggering the PPU to read from
     // the incremented address
 
-    // TODO(oren): set the address bus to something I guess? but what?
-    // blargg tests suggest that reading ppudata should
-    // clock the irq counter but idk how or why
-    // std::cout << std::hex << vram_addr_ << std::endl;
     read_pending_ = true;
 
-    if ((vram_addr_ & 0x3F00) == 0x3F00) {
+    palette_read = (vram_addr_ & PALETTE_BASE) == PALETTE_BASE;
+    if (palette_read) {
       result = mapper.palette_read(vram_addr_);
       if (grayscale()) {
         result &= 0x30;
       }
-
     } else {
       result = regs_[PPUDATA];
     }
   } else if (r == OAMDATA) {
     result = mapper.oam_read(oamAddr());
+    // bits 2-4 of sprite attribute are unimplemented
+    if (oamAddr() % 4 == 2) {
+      result &= 0xE3;
+    }
   }
-  io_latch_ = result;
+
+  // refresh I/O latch and overwrite result bits as appropriate
+  result = io_latch_.read(r, result, palette_read);
+
+  // GROSS
+
   return result;
 }
 
 void Registers::tick() {
+  io_latch_.tick();
   ++cycle_;
   if (cycle_ == 341) {
     ++scanline_;
@@ -183,13 +185,13 @@ void Registers::clearVBlankStarted() {
 
 uint8_t Registers::getData() {
   write_pending_ = false;
-  vram_addr_ += vRamAddrInc();
+  incVRamAddr();
   return write_value_;
 }
 
 void Registers::putData(uint8_t data) {
   read_pending_ = false;
-  vram_addr_ += vRamAddrInc();
+  incVRamAddr();
   regs_[PPUDATA] = data;
 }
 

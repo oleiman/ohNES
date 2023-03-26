@@ -79,6 +79,7 @@ test_target(
   NAME ppu_test
   SRC src/ppu_tests.cpp
   ROMS ppu_vbl_nmi/rom_singles/*.nes
+  ROMS ppu_open_bus/ppu_open_bus.nes
   ROMS ppu_read_buffer/test_ppu_read_buffer.nes
 )
 

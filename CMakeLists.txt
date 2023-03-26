@@ -69,9 +69,9 @@ if (WITH_APP)
 
   set_property(TARGET ohNES PROPERTY CXX_STANDARD 17)
 
-  if (LINUX AND NOT APPLE)
-    set(GPERF_LIB profiler)
-  endif()
+  # if (LINUX AND NOT APPLE)
+  #   set(GPERF_LIB profiler)
+  # endif()
 
   target_link_libraries(ohNES
     ohNESCore

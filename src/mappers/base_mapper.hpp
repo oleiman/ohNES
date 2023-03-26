@@ -163,7 +163,7 @@ protected:
     for (size_t i = 0; i < ppu_oam_.size(); ++i) {
       auto idx = (oam_base + i) & (ppu_oam_.size() - 1);
       assert(idx < ppu_oam_.size());
-      ppu_oam_[idx] = internal_[base | i];
+      ppu_oam_[idx] = read(base | i);
     }
     ppu_reg_.signalOamDma();
   }
