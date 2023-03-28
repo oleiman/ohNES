@@ -31,6 +31,7 @@ public:
   virtual uint8_t mirroring(void) const = 0;
   virtual bool setPpuABus(AddressT) = 0;
   virtual void tick(uint16_t) = 0;
+  virtual uint8_t openBus(void) const = 0;
 };
 
 template <class Derived> class NESMapperBase : public NESMapper {
@@ -50,6 +51,7 @@ protected:
   ctrl::JoyPad &joypad_;
   uint8_t prgBankSelect = 0;
   uint8_t chrBankSelect = 0;
+  uint8_t open_bus = 0;
 
 public:
   NESMapperBase(sys::NES &console, cart::Cartridge const &c,
@@ -64,6 +66,8 @@ public:
   virtual bool setPpuABus(AddressT) override { return false; }
 
   virtual void tick(uint16_t c) override { m2_count_ += c; }
+
+  virtual uint8_t openBus() const override { return open_bus; }
 
   constexpr static size_t size = 1ul << (sizeof(AddressT) * 8);
 
@@ -89,28 +93,31 @@ public:
     }
   }
   DataT read(AddressT addr, bool dbg = false) override {
+    uint8_t result = 0;
     if (addr < 0x2000) {
-      return internal_[addr & 0x7FF];
+      result = internal_[addr & 0x7FF];
     } else if (addr < 0x4000) {
       if (!dbg) {
-        return ppu_reg_.read(CName(addr & 0x07), *this);
+        result = ppu_reg_.read(CName(addr & 0x07), *this);
       } else {
-        return 0xFF;
+        result = 0xFF;
       }
-    } else if (addr == 0x4016) {
-      return joypad_.readNext();
-      // } else if (addr == 0x4017) {
-      //   // TODO(oren): controller 2
-      //   return 0;
-    } else if (addr < 0x4018) {
-      return apu_reg_.read(AudCName(addr & 0x1F), *this);
+    } else if (addr == 0x4016 || addr == 0x4017) {
+      if (addr == 0x4016) {
+        result = joypad_.readNext();
+      }
+      result &= 0x0F;
+      result |= (open_bus & 0xF0);
+    } else if (addr == 0x4015) {
+      result = apu_reg_.read(AudCName(addr & 0x1F), *this);
     } else if (addr < 0x6000) {
       // TODO(OREN): rarely used, see docs
-      return 0;
+      result = open_bus;
     } else {
-      // TODO(oren): Cartridge space (varies by mapper)
-      return static_cast<Derived *>(this)->cartRead(addr);
+      result = static_cast<Derived *>(this)->cartRead(addr);
     }
+    open_bus = result;
+    return result;
   }
 
   void ppu_write(AddressT addr, DataT data) override {

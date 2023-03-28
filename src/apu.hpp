@@ -313,9 +313,15 @@ public:
   uint8_t status(const Channels &channels, const DMCUnit &dmc) const;
   // TODO(oren): when do we clear this?
   bool frameInterrupt() const { return frame_interrupt_.status; }
+  void clearFrameInterrupt() { frame_interrupt_.clear(); }
   bool dmcInterrupt() const { return dmc_interrupt_; }
 
   int count() const { return counter_; }
+
+  void reset() {
+    cycle_toggle_ = true;
+    frame_interrupt_.clear();
+  }
 
 private:
   Sequencer seq_;
@@ -339,6 +345,7 @@ private:
 
   } frame_interrupt_;
   bool dmc_interrupt_ = false;
+  bool cycle_toggle_ = true;
 };
 
 class APU {
@@ -346,6 +353,7 @@ class APU {
 public:
   APU(mapper::NESMapper &mapper, Registers &registers);
   void step(bool &irq);
+  void reset(bool force = false);
   void mute(int cid, bool m) {
     ChannelId id{cid};
     auto it = channels_.find(id);

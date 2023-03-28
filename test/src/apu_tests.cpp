@@ -24,3 +24,12 @@ TEST(ApuTest, DmcFailing) {
   BLARGG_TEST_MEM("rom/7-dmc_basics.nes", 0x6000, 0x13);
   BLARGG_TEST_MEM("rom/8-dmc_rates.nes", 0x6000, 0x2);
 }
+
+TEST(ApuTest, Reset) {
+  BLARGG_TEST("rom/4015_cleared.nes");
+  BLARGG_TEST("rom/4017_written.nes");
+  BLARGG_TEST("rom/4017_timing.nes");
+  BLARGG_TEST("rom/len_ctrs_enabled.nes");
+  BLARGG_TEST("rom/irq_flag_cleared.nes");
+  BLARGG_TEST("rom/works_immediately.nes");
+}

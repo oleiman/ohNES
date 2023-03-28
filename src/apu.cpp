@@ -42,6 +42,12 @@ void APU::step(bool &irq) {
   // }
 }
 
+void APU::reset(bool force) {
+  registers_.write(Registers::CName::STATUS, 0, mapper_);
+  registers_.reload(Registers::CName::FRAME_CNT, mapper_);
+  frame_counter_.reset();
+}
+
 void FrameCounter::inc(Channels &channels, DMCUnit &dmc_unit,
                        aud::Registers &regs) {
 
@@ -75,8 +81,7 @@ void FrameCounter::inc(Channels &channels, DMCUnit &dmc_unit,
     counter_ = 0;
   }
 
-  static bool alter = true;
-  if (alter) {
+  if (cycle_toggle_) {
     if (seq_.step(counter_) && !regs.inhibitIrq()) {
       // set the frame interrupt flag on this and the next two CPU cycles
       frame_interrupt_.set(2);
@@ -94,7 +99,7 @@ void FrameCounter::inc(Channels &channels, DMCUnit &dmc_unit,
     seq_.clock(channels);
   }
 
-  alter = !alter;
+  cycle_toggle_ = !cycle_toggle_;
 
   for (auto &[id, chan] : channels) {
     chan->toggle();

@@ -65,6 +65,8 @@ test_target(
        instr_test-v5/rom_singles/*.nes
        cpu_dummy_writes/*.nes
        cpu_reset/*.nes
+       cpu_exec_space/*.nes
+       instr_misc/rom_singles/*.nes
 )
 
 test_target(
@@ -72,6 +74,7 @@ test_target(
   SRC src/apu_tests.cpp
   ROMS apu_test/rom_singles/*.nes
        apu_mixer/*.nes
+       apu_reset/*.nes
 
 )
 
@@ -79,8 +82,10 @@ test_target(
   NAME ppu_test
   SRC src/ppu_tests.cpp
   ROMS ppu_vbl_nmi/rom_singles/*.nes
-  ROMS ppu_open_bus/ppu_open_bus.nes
-  ROMS ppu_read_buffer/test_ppu_read_buffer.nes
+        ppu_open_bus/ppu_open_bus.nes
+        ppu_read_buffer/test_ppu_read_buffer.nes
+        oam_read/oam_read.nes
+        oam_stress/oam_stress.nes
 )
 
 test_target(

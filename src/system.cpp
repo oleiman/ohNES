@@ -20,7 +20,7 @@ NES::NES(std::string_view const &romfile, bool debug, bool quiet)
   cpu_.registerTickHandler(std::bind(&NES::ppuTick, this));
   cpu_.registerTickHandler(std::bind(&NES::mapperTick, this));
   cpu_.registerTickHandler(std::bind(&NES::apuTick, this));
-  cpu_.reset();
+  reset();
   if (!quiet) {
     std::cerr << cartridge_ << std::endl;
   }

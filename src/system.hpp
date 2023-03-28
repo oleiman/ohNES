@@ -20,7 +20,10 @@ public:
   ~NES() = default;
   void step();
   bool render(RenderBuffer &renderBuf);
-  void reset(bool force = false) { cpu_.reset(force); };
+  void reset(bool force = false) {
+    cpu_.reset(force);
+    apu_.reset(force);
+  };
   void reset(uint16_t addr) { cpu_.reset(static_cast<uint16_t>(addr)); }
   cpu::CpuState const &state() { return cpu_.state(); }
   bool &irqPin() { return cpu_.irqPin(); }

@@ -52,3 +52,18 @@ TEST(CpuTest, CpuReset) {
   BLARGG_TEST("rom/registers.nes");
   BLARGG_TEST("rom/ram_after_reset.nes");
 }
+
+TEST(CpuTest, ExecSpace) {
+  BLARGG_TEST("rom/test_cpu_exec_space_ppuio.nes");
+  BLARGG_TEST("rom/test_cpu_exec_space_apu.nes");
+}
+
+TEST(CpuTest, InstrMisc) {
+  BLARGG_TEST("rom/01-abs_x_wrap.nes");
+  BLARGG_TEST("rom/02-branch_wrap.nes");
+}
+
+TEST(CpuTest, DummyReads) {
+  BLARGG_TEST("rom/03-dummy_reads.nes");
+  BLARGG_TEST("rom/04-dummy_reads_apu.nes");
+}

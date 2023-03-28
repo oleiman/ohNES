@@ -1,4 +1,5 @@
 #include "apu_registers.hpp"
+#include "mappers/base_mapper.hpp"
 #include "util.hpp"
 
 namespace aud {
@@ -51,14 +52,21 @@ void Registers::write(CName r, uint8_t val, mapper::NESMapper &mapper) {
   default:
     break;
   }
+
+  last_write_[static_cast<int>(r)] = val;
 }
 
-uint8_t Registers::read(CName r, mapper::NESMapper &) {
+uint8_t Registers::read(CName r, mapper::NESMapper &m) {
   if (r == STATUS) {
     clear_frame_interrupt_ = true;
     return fc_status_;
   }
-  return 0;
+  return m.openBus();
+}
+
+void Registers::reload(CName r, mapper::NESMapper &m) {
+  assert(static_cast<int>(r) < CName::N_REGS);
+  write(r, last_write_[static_cast<int>(r)], m);
 }
 
 double Registers::calc_duty_cycle(uint8_t val) const {

@@ -23,3 +23,8 @@ TEST(PpuTest, VblNmiEvenOdd) {
 TEST(PpuTest, PpuOpenBus) { BLARGG_TEST("rom/ppu_open_bus.nes"); }
 
 TEST(PpuTest, PpuReadBuffer) { BLARGG_TEST("rom/test_ppu_read_buffer.nes"); }
+
+TEST(PpuTest, Oam) {
+  BLARGG_TEST("rom/oam_read.nes");
+  BLARGG_TEST("rom/oam_stress.nes");
+}

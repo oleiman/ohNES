@@ -41,9 +41,11 @@ public:
     STATUS = 0x15,
     _2 = 0x16,
     FRAME_CNT = 0x17,
+    N_REGS = 0x18,
   };
   void write(CName r, uint8_t val, mapper::NESMapper &);
   uint8_t read(CName r, mapper::NESMapper &);
+  void reload(CName r, mapper::NESMapper &);
 
   uint8_t seqMode() const { return seq_mode_; }
   bool inhibitIrq() const { return inhibit_irq_; }
@@ -221,6 +223,8 @@ private:
 
   bool dmc_en_changed = false;
   bool dmc_direct_load = false;
+
+  std::array<uint8_t, CName::N_REGS> last_write_ = {0};
 
   static constexpr std::array<uint16_t, 0x10> DMCRateTable = {
       428, 380, 340, 320, 286, 254, 226, 214,
