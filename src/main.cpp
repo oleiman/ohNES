@@ -33,8 +33,8 @@ int main(int argc, char **argv) {
   args::HelpFlag help(argparse, "help", "Display this help menu",
                       {'h', "help"});
   args::Group required(argparse, "\nRequired:", args::Group::Validators::All);
-  args::ValueFlag<std::string> romfile(required, "romfile", "iNES file to load",
-                                       {'r', "rom"});
+  args::Positional<std::string> romfile(required, "romfile",
+                                        "iNES file to load");
 
   args::Group debugging(argparse, "Debugging:");
   args::Flag debug(debugging, "", "CPU debugger", {"debug"});
