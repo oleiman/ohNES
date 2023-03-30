@@ -70,20 +70,14 @@ public:
   }
 
   bool clearFrameInterrupt() {
-    auto tmp = clear_frame_interrupt_;
-    clear_frame_interrupt_ = false;
-    return tmp;
+    return get_and_clear_flag(clear_frame_interrupt_);
   }
 
   bool isEnabled(ChannelId id) {
     return status_reg_ & (0b1 << static_cast<uint8_t>(id));
   }
 
-  bool dmcEnableChange() {
-    auto tmp = dmc_en_changed;
-    dmc_en_changed = false;
-    return tmp;
-  }
+  bool dmcEnableChange() { return get_and_clear_flag(dmc_en_changed); }
 
   bool envStart(ChannelId id) {
     return get_and_clear_channel_flag(EnvStartFlags, id);
@@ -192,8 +186,12 @@ private:
   }
 
   bool get_and_clear_channel_flag(ChannelFlags &arr, ChannelId id) {
-    bool tmp = arr[static_cast<int>(id)];
-    arr[static_cast<int>(id)] = false;
+    return get_and_clear_flag(arr[static_cast<int>(id)]);
+  }
+
+  bool get_and_clear_flag(bool &flag) {
+    bool tmp = flag;
+    flag = false;
     return tmp;
   }
 

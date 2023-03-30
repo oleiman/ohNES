@@ -185,7 +185,10 @@ struct SampleBuffer {
       : mapper_(mapper), regs_(regs) {}
 
   void enable();
-  void disable() { bytes_remaining_ = 0; }
+  void disable() {
+    bytes_remaining_ = 0;
+    empty_ = true;
+  }
   bool empty() const { return empty_; }
   uint16_t bytesRemaining() const { return bytes_remaining_; }
 
@@ -197,9 +200,21 @@ struct SampleBuffer {
     return tmp;
   }
 
-private:
+  bool pendingInterrupt() {
+    auto tmp = pending_interrupt_;
+    pending_interrupt_ = false;
+    return tmp;
+  }
+
+  bool pendingStall() {
+    auto tmp = pending_stall_;
+    pending_stall_ = false;
+    return tmp;
+  }
+
   void fill();
 
+private:
   mapper::NESMapper &mapper_;
   Registers &regs_;
   uint8_t buf_ = 0;
@@ -210,6 +225,8 @@ private:
   bool empty_ = true;
   bool sample_load_ = false;
   bool is_first_byte_ = false;
+  bool pending_interrupt_ = false;
+  bool pending_stall_ = false;
 };
 
 struct SampleOutput {
@@ -224,14 +241,12 @@ struct SampleOutput {
     }
   }
 
-  void enable() { enable_ = true; }
   void disable() {
     level_setting_ = 0;
     output_level_ = 0x40;
-    enable_ = false;
   }
 
-  bool isEnabled() const { return enable_; }
+  uint8_t bitsRemaining() const { return bits_remaining_; }
 
 private:
   void start_cycle(SampleBuffer &sbuf);
@@ -240,17 +255,19 @@ private:
   uint8_t level_setting_ = 0;
   uint8_t bits_remaining_ = 8;
   bool silence_ = true;
-  bool enable_ = false;
 };
 
 struct SampleTimer {
-  void setPeriod(uint16_t per) { period_ = (per >> 1); }
+  void setPeriod(uint16_t per) {
+    period_ = (per >> 1);
+    counter_ = 0;
+  }
   uint16_t period() { return (period_ << 1); }
   bool tick();
 
 private:
   uint16_t counter_ = 0;
-  uint16_t period_;
+  uint16_t period_ = 214;
 };
 
 class DMCUnit {
@@ -261,6 +278,9 @@ public:
   void config();
   bool step();
   uint16_t bytesRemaining() const { return sbuf_.bytesRemaining(); }
+  bool empty() const { return sbuf_.empty() && sbuf_.bytesRemaining() == 0; }
+  bool pendingStall() { return sbuf_.pendingStall(); }
+  uint8_t status() const { return 0b1 << 4; }
 
 private:
   double calc_freq(uint16_t period) const;
@@ -270,6 +290,7 @@ private:
   SampleOutput output_;
   SampleTimer timer_;
   ChannelId id_ = ChannelId::DMC;
+  uint16_t ticks_ = 0;
 };
 
 class Sequencer {
@@ -361,6 +382,8 @@ public:
       it->second->forceMute(m);
     }
   }
+
+  bool stallCpu() { return dmc_unit_->pendingStall(); }
 
 private:
   mapper::NESMapper &mapper_;

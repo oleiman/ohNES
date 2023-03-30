@@ -13,12 +13,6 @@ void Registers::write(CName r, uint8_t val, mapper::NESMapper &mapper) {
   } else if (r == CName::STATUS) {
     status_reg_ = val;
     dmc_en_changed = true;
-    // bool b4 = status_reg_ & util::BIT4;
-    // status_reg_ = val;
-    // bool af = status_reg_ & util::BIT4;
-    // if (!af || (!b4 && af)) {
-    //   dmc_en_changed = true;
-    // }
   } else {
     generator_regs[static_cast<int>(r)] = val;
   }

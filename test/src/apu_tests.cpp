@@ -20,9 +20,9 @@ TEST(ApuTest, IrqTiming) {
   BLARGG_TEST_MEM("rom/6-irq_flag_timing.nes", 0x6000, 0x00);
 }
 
-TEST(ApuTest, DmcFailing) {
-  BLARGG_TEST_MEM("rom/7-dmc_basics.nes", 0x6000, 0x13);
-  BLARGG_TEST_MEM("rom/8-dmc_rates.nes", 0x6000, 0x2);
+TEST(ApuTest, Dmc) {
+  BLARGG_TEST("rom/7-dmc_basics.nes");
+  BLARGG_TEST("rom/8-dmc_rates.nes");
 }
 
 TEST(ApuTest, Reset) {

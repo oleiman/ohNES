@@ -71,7 +71,6 @@ void FrameCounter::inc(Channels &channels, DMCUnit &dmc_unit,
   }
 
   if (regs.frameCounterReset()) {
-
     seq_.setMode(Sequencer::Mode(regs.seqMode()));
     seq_.reset();
 
@@ -92,7 +91,8 @@ void FrameCounter::inc(Channels &channels, DMCUnit &dmc_unit,
       counter_ = 0;
     }
 
-    if (dmc_unit.step() && regs.dmcInterruptEnable()) {
+    bool done = dmc_unit.step();
+    if (done && regs.dmcInterruptEnable()) {
       dmc_interrupt_ = true;
     }
   } else {
@@ -122,7 +122,7 @@ uint8_t FrameCounter::status(const Channels &channels,
   }
 
   if (dmc_unit.bytesRemaining()) {
-    result |= 0b1 << 4;
+    result |= dmc_unit.status();
   }
 
   return result;
@@ -171,17 +171,22 @@ void SampleBuffer::enable() {
 uint8_t SampleBuffer::get() {
   assert(!empty_);
   auto val = buf_;
+  empty_ = true;
   if (sample_load_) {
     is_first_byte_ = true;
     sample_load_ = false;
   }
+  // immediately try re-filling the sample buffer
   fill();
   return val;
 }
 
 void SampleBuffer::fill() {
-  if (bytes_remaining_ > 0) {
+
+  // don't reload the buffer unless it's been emptied by the output module
+  if (bytes_remaining_ > 0 && empty_) {
     empty_ = false;
+    pending_stall_ = true;
     buf_ = mapper_.read(curr_addr_);
     if (curr_addr_ == 0xFFFF) {
       curr_addr_ = 0x8000;
@@ -189,17 +194,20 @@ void SampleBuffer::fill() {
       ++curr_addr_;
     }
     --bytes_remaining_;
+    // try looping if needed
     if (bytes_remaining_ == 0 && regs_.dmcLoop()) {
       curr_addr_ = regs_.dmcSampleAddress();
       bytes_remaining_ = regs_.dmcSampleLength();
       sample_load_ = true;
     }
-  } else {
-    empty_ = true;
+
+    // if bytes_remaining becamse 0, stage an interrupt
+    pending_interrupt_ = (bytes_remaining_ == 0);
   }
 }
 
 uint8_t SampleOutput::clock(SampleBuffer &sbuf) {
+  uint8_t lvl = 0xFF;
   if (!silence_) {
     uint8_t l = shift_register_ & 0b1;
     if (l && output_level_ <= 125) {
@@ -207,16 +215,18 @@ uint8_t SampleOutput::clock(SampleBuffer &sbuf) {
     } else if (!l && output_level_ >= 2) {
       output_level_ -= 2;
     }
+    lvl = output_level_;
   }
   shift_register_ >>= 1;
   --bits_remaining_;
   if (bits_remaining_ == 0) {
     start_cycle(sbuf);
   }
-  return (silence_ ? 0xFF : output_level_);
+  return lvl;
 }
 
 void SampleOutput::start_cycle(SampleBuffer &sbuf) {
+  // try filling the sample buffer
   silence_ = sbuf.empty();
   if (!silence_) {
     shift_register_ = sbuf.get();
@@ -238,28 +248,28 @@ bool SampleTimer::tick() {
 }
 
 void DMCUnit::config() {
-  timer_.setPeriod(regs_.dmcRate());
   output_.setLevel(regs_.dmcDirectLoad());
-
   if (regs_.isEnabled(id_)) {
     sbuf_.enable();
-    output_.enable();
     gen_.on();
   } else {
+    ticks_ = 0;
     sbuf_.disable();
-    output_.disable();
+    // TODO(oren): is this really needed?
+    // output_.disable();
     gen_.off();
   }
 }
 
 bool DMCUnit::step() {
-  auto br_prev = bytesRemaining();
+  ticks_++;
   if (timer_.tick()) {
+    timer_.setPeriod(regs_.dmcRate());
     auto out_lvl = output_.clock(sbuf_);
     assert(out_lvl <= 127 || out_lvl == 0xFF);
     gen_.change_output_level(out_lvl, timer_.period());
   }
-  return (br_prev > 0 && bytesRemaining() == 0);
+  return sbuf_.pendingInterrupt();
 }
 
 bool Sequencer::step(int cycle_count) {

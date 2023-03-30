@@ -46,7 +46,16 @@ public:
 private:
   void ppuTick() { ppu_.step(3 + ppu_registers_.oamCycles(), cpu_.nmiPin()); }
   void mapperTick() { mapper_->tick(1); }
-  void apuTick() { apu_.step(cpu_.irqPin()); }
+  void apuTick() {
+    apu_.step(cpu_.irqPin());
+    if (apu_.stallCpu()) {
+      // TODO(oren): determine stall length cleverly
+      cpu_.stall(4);
+      // for (int i = 0; i < 4; ++i) {
+      //   apu_.step(cpu_.irqPin());
+      // }
+    }
+  }
 
   cart::Cartridge cartridge_;
   vid::Registers ppu_registers_;
