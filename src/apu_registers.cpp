@@ -54,8 +54,9 @@ uint8_t Registers::read(CName r, mapper::NESMapper &m) {
   if (r == STATUS) {
     clear_frame_interrupt_ = true;
     return fc_status_;
+  } else {
+    return m.openBus();
   }
-  return m.openBus();
 }
 
 void Registers::reload(CName r, mapper::NESMapper &m) {

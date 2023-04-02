@@ -332,16 +332,17 @@ public:
   void inc(Channels &channels, DMCUnit &dmc, aud::Registers &regs);
 
   uint8_t status(const Channels &channels, const DMCUnit &dmc) const;
-  // TODO(oren): when do we clear this?
-  bool frameInterrupt() const { return frame_interrupt_.status; }
-  void clearFrameInterrupt() { frame_interrupt_.clear(); }
+  bool frameIrqReady() const {
+    return frame_interrupt_flag_.status && !frame_interrupt_flag_.count;
+  }
+  void clearFrameInterrupt() { frame_interrupt_flag_.clear(); }
   bool dmcInterrupt() const { return dmc_interrupt_; }
 
   int count() const { return counter_; }
 
   void reset() {
     cycle_toggle_ = true;
-    frame_interrupt_.clear();
+    frame_interrupt_flag_.clear();
   }
 
 private:
@@ -349,7 +350,8 @@ private:
   int counter_;
   struct {
     bool status = false;
-    int count;
+    int count = 0;
+
     void set(int cnt) {
       status = true;
       count = cnt;
@@ -364,7 +366,7 @@ private:
       }
     }
 
-  } frame_interrupt_;
+  } frame_interrupt_flag_;
   bool dmc_interrupt_ = false;
   bool cycle_toggle_ = true;
 };
@@ -373,7 +375,7 @@ class APU {
 
 public:
   APU(mapper::NESMapper &mapper, Registers &registers);
-  void step(bool &irq);
+  void step();
   void reset(bool force = false);
   void mute(int cid, bool m) {
     ChannelId id{cid};
@@ -383,6 +385,8 @@ public:
     }
   }
 
+  bool pendingIrq() const { return pending_irq_; }
+
   bool stallCpu() { return dmc_unit_->pendingStall(); }
 
 private:
@@ -391,6 +395,7 @@ private:
   Channels channels_;
   FrameCounter frame_counter_;
   std::unique_ptr<DMCUnit> dmc_unit_;
+  bool pending_irq_;
 };
 
 } // namespace aud

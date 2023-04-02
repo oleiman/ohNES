@@ -67,3 +67,14 @@ TEST(CpuTest, DummyReads) {
   BLARGG_TEST("rom/03-dummy_reads.nes");
   BLARGG_TEST("rom/04-dummy_reads_apu.nes");
 }
+
+TEST(CpuTest, Interrupts) {
+  BLARGG_TEST("rom/1-cli_latency.nes");
+  BLARGG_TEST("rom/2-nmi_and_brk.nes");
+  BLARGG_TEST("rom/3-nmi_and_irq.nes");
+
+  // I note that both nestopia and nintendulator FAIL both of these tests,
+  // though in somewhat less catastrophic fashion than ohNES
+  // BLARGG_TEST("rom/4-irq_and_dma.nes");
+  // BLARGG_TEST("rom/5-branch_delays_irq.nes");
+}

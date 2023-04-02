@@ -64,7 +64,6 @@ private:
   } irqCounter_;
 
   bool irqEnabled_ = false;
-  bool pending_irq_ = false;
 
   enum class A12_STATE {
     LOW,

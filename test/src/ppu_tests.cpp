@@ -8,7 +8,7 @@ TEST(PpuTest, VblNmi) {
   BLARGG_TEST("rom/06-suppression.nes");
 }
 
-TEST(PpuTest, DISABLED_NmiTiming) { BLARGG_TEST("rom/05-nmi_timing.nes"); }
+TEST(PpuTest, NmiTiming) { BLARGG_TEST("rom/05-nmi_timing.nes"); }
 
 TEST(PpuTest, NmiOnOffTiming) {
   BLARGG_TEST("rom/07-nmi_on_timing.nes");

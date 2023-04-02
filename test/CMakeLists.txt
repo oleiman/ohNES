@@ -67,6 +67,7 @@ test_target(
        cpu_reset/*.nes
        cpu_exec_space/*.nes
        instr_misc/rom_singles/*.nes
+       cpu_interrupts_v2/rom_singles/*.nes
 )
 
 test_target(

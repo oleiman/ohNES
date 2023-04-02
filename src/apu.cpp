@@ -27,19 +27,13 @@ APU::APU(mapper::NESMapper &mapper, Registers &registers)
       std::make_unique<DMCUnit>(Generator::Make<DMC>(), registers_, mapper_);
 }
 
-void APU::step(bool &irq) {
+void APU::step() {
+  pending_irq_ =
+      frame_counter_.frameIrqReady() || frame_counter_.dmcInterrupt();
 
   frame_counter_.inc(channels_, *dmc_unit_, registers_);
 
-  // NOTE(oren): actually setting the IRQ here produces weird behavior
-  // not really sure how this should be treated
-  // irq = frame_counter_.frameInterrupt();
-
   registers_.setFcStatus(frame_counter_.status(channels_, *dmc_unit_));
-
-  // if (frame_counter_.dmcInterrupt()) {
-  //   irq = true;
-  // }
 }
 
 void APU::reset(bool force) {
@@ -52,10 +46,10 @@ void FrameCounter::inc(Channels &channels, DMCUnit &dmc_unit,
                        aud::Registers &regs) {
 
   if (regs.clearFrameInterrupt()) {
-    frame_interrupt_.clear();
+    frame_interrupt_flag_.clear();
   }
 
-  frame_interrupt_.dec();
+  frame_interrupt_flag_.dec();
 
   for (auto &[id, chan] : channels) {
     chan->config();
@@ -75,17 +69,20 @@ void FrameCounter::inc(Channels &channels, DMCUnit &dmc_unit,
     seq_.reset();
 
     if (regs.inhibitIrq()) {
-      frame_interrupt_.clear();
+      frame_interrupt_flag_.clear();
     }
     counter_ = 0;
   }
 
   if (cycle_toggle_) {
     if (seq_.step(counter_) && !regs.inhibitIrq()) {
-      // set the frame interrupt flag on this and the next two CPU cycles
-      frame_interrupt_.set(2);
+      // assert frame interrupt flag for this and the next two cycles, but don't
+      // assert the CPU's IRQ line until the end of that time, leaving it
+      // asserted until the frame interrupt flag is deasserted and stays so
+      frame_interrupt_flag_.set(2);
     }
     ++counter_;
+
     if ((seq_.mode() == Sequencer::Mode::M0 && counter_ == 14915) ||
         (seq_.mode() == Sequencer::Mode::M1 && counter_ == 18641)) {
       counter_ = 0;
@@ -113,7 +110,7 @@ uint8_t FrameCounter::status(const Channels &channels,
     result |= util::BIT7;
   }
 
-  if (frame_interrupt_.status) {
+  if (frame_interrupt_flag_.status) {
     result |= util::BIT6;
   }
 

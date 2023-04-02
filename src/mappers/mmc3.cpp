@@ -165,7 +165,6 @@ void MMC3::irqEnable(bool e) {
   // acknowledge whatever is pending
   if (irqEnabled_ && !e) {
     pending_irq_ = false;
-    console_.irqPin() = false;
   }
 
   irqEnabled_ = e;
@@ -177,7 +176,6 @@ bool MMC3::genIrq() {
     // std::cout << console_.currScanline() << ",  " << console_.currPpuCycle()
     //           << std::endl;
 
-    console_.irqPin() = true;
     pending_irq_ = true;
     return true;
   }

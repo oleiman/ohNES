@@ -32,6 +32,10 @@ public:
   virtual bool setPpuABus(AddressT) = 0;
   virtual void tick(uint16_t) = 0;
   virtual uint8_t openBus(void) const = 0;
+  bool pendingIrq(void) const { return pending_irq_; };
+
+protected:
+  bool pending_irq_ = false;
 };
 
 template <class Derived> class NESMapperBase : public NESMapper {

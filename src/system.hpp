@@ -26,7 +26,6 @@ public:
   };
   void reset(uint16_t addr) { cpu_.reset(static_cast<uint16_t>(addr)); }
   cpu::CpuState const &state() { return cpu_.state(); }
-  bool &irqPin() { return cpu_.irqPin(); }
   uint16_t currScanline() { return ppu_.currScanline(); }
   uint16_t currPpuCycle() { return ppu_.currCycle(); }
 
@@ -44,10 +43,22 @@ public:
   ctrl::JoyPad joypad_1;
 
 private:
-  void ppuTick() { ppu_.step(3 + ppu_registers_.oamCycles(), cpu_.nmiPin()); }
-  void mapperTick() { mapper_->tick(1); }
-  void apuTick() {
-    apu_.step(cpu_.irqPin());
+  bool ppuTick() {
+    ppu_.step(1 + ppu_registers_.oamCycles(), cpu_.nmiPin());
+    // CPU should poll the nmi line at the beginning of the second "half" of the
+    // cycle. we can't subdivide a cpu clock any further, so we'll poll after
+    // the first PPU cycle clocked by each CPU tick.
+    cpu_.pollNmi();
+    ppu_.step(1, cpu_.nmiPin());
+    ppu_.step(1, cpu_.nmiPin());
+    return false;
+  }
+  bool mapperTick() {
+    mapper_->tick(1);
+    return mapper_->pendingIrq();
+  }
+  bool apuTick() {
+    apu_.step();
     if (apu_.stallCpu()) {
       // TODO(oren): determine stall length cleverly
       cpu_.stall(4);
@@ -55,6 +66,7 @@ private:
       //   apu_.step(cpu_.irqPin());
       // }
     }
+    return apu_.pendingIrq();
   }
 
   cart::Cartridge cartridge_;
