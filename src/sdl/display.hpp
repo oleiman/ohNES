@@ -112,8 +112,8 @@ private:
   SDL_Texture *texture;
   int window_id;
 
-  bool mouse_focus;
-  bool keyboard_focus;
+  bool mouse_focus = false;
+  bool keyboard_focus = true;
   bool shown;
   bool minimized;
   unsigned long frames_ = 0;

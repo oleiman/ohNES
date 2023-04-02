@@ -2,7 +2,7 @@
 #include "ppu.hpp"
 #include "sdl/audio.hpp"
 #include "sdl/display.hpp"
-#include "sdl/pad_maps.hpp"
+#include "sdl/input.hpp"
 #include "system.hpp"
 #include "wx_/dbg_app.h"
 
@@ -19,8 +19,9 @@ using vid::LoadSystemPalette;
 
 using dbg::DebuggerApp;
 using sdl_internal::Audio;
+using sdl_internal::ControllerInputHandler;
 using sdl_internal::Display;
-using sdl_internal::Kbd2JoyPad;
+using sdl_internal::KeyboardInputHandler;
 using sys::NES;
 
 #define SCALE 2
@@ -70,13 +71,17 @@ int main(int argc, char **argv) {
 
   LoadSystemPalette(DEFAULT_PALETTE);
 
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER |
+               SDL_INIT_GAMECONTROLLER) < 0) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "SDL_Init Error",
                              SDL_GetError(), NULL);
     SDL_Delay(2000);
     exit(1);
   }
   {
+
+    KeyboardInputHandler::Init();
+    ControllerInputHandler::Init();
 
     std::unique_ptr<Display<sys::DBG_W, sys::DBG_H>> ppu_debugger = nullptr;
 
@@ -127,36 +132,24 @@ int main(int argc, char **argv) {
             nes.reset(true);
             break;
           case SDLK_1:
-            nes.debugger().selectNametable(0);
-            break;
           case SDLK_2:
-            nes.debugger().selectNametable(1);
-            break;
           case SDLK_3:
-            nes.debugger().selectNametable(2);
-            break;
           case SDLK_4:
-            nes.debugger().selectNametable(3);
+            nes.debugger().selectNametable(event.key.keysym.sym - SDLK_1);
             break;
           default:
             break;
           }
-          // falls through to check for joypad events
-        case SDL_KEYUP: {
-          if (display->hasMouseFocus()) {
-            auto sym = event.key.keysym.sym;
-            auto jp = Kbd2JoyPad.find(sym);
-            if (jp != Kbd2JoyPad.end()) {
-              auto b = jp->second;
-              if (event.type == SDL_KEYDOWN) {
-                nes.joypad_1.press(b);
-              } else {
-                nes.joypad_1.release(b);
-              }
-            }
-          }
-        } break;
-
+        case SDL_KEYUP:
+          KeyboardInputHandler::HandleEvent(event, nes,
+                                            display->hasMouseFocus());
+          break;
+        case SDL_CONTROLLERDEVICEADDED:
+        case SDL_CONTROLLERDEVICEREMOVED:
+        case SDL_CONTROLLERBUTTONDOWN:
+        case SDL_CONTROLLERBUTTONUP:
+          ControllerInputHandler::HandleEvent(event, nes,
+                                              display->hasMouseFocus());
         default:
           break;
         }

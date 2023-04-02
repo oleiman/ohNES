@@ -23,10 +23,20 @@ struct JoyPad {
   void press(Button const b);
   void release(Button const b);
   void setStrobe(bool s);
+  bool claim() {
+    if (!claimed_) {
+      claimed_ = true;
+      return true;
+    } else {
+      return false;
+    }
+  }
+  void unclaim() { claimed_ = false; }
 
 private:
   std::array<uint8_t, static_cast<size_t>(Button::N_BUTTONS)> state_ = {};
   uint8_t curr_ = 0;
   bool strobe_ = false;
+  bool claimed_ = false;
 };
 } // namespace ctrl

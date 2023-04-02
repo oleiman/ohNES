@@ -50,6 +50,7 @@ if (WITH_APP)
   add_executable(ohNES
     src/main.cpp
     src/sdl/audio.cpp
+    src/sdl/input.cpp
     src/wx_/dbg_app.cpp
     src/wx_/dbg_wxapp.cpp
   )

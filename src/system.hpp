@@ -39,8 +39,25 @@ public:
   // advance the frame in headless mode (primarily for testing purposes)
   bool checkFrame() { return ppu_registers_.isFrameReady(); }
 
+  // useful for hot-swapping USB game controllers. JoyPad access is only
+  // exclusive when obtained through this function. In general, any module
+  // with access to a console instance can grab and interact with either
+  // joypad as needed. This function is more about assigning distinct joypads to
+  // otherwise identical input devices, rather than about restricting access
+  // outright.
+  ctrl::JoyPad &getAvailablePad() {
+    if (joypad_1.claim()) {
+      return joypad_1;
+    } else if (joypad_2.claim()) {
+      return joypad_2;
+    } else {
+      throw std::runtime_error("No joypads left");
+    }
+  }
+
   bool debug_;
   ctrl::JoyPad joypad_1;
+  ctrl::JoyPad joypad_2;
 
 private:
   bool ppuTick() {
