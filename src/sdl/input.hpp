@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dbg/nes_debugger.hpp"
+#include "debugger.hpp"
 #include "joypad.hpp"
 
 #include <SDL.h>
@@ -18,8 +20,8 @@ template <class Derived, class KeyT> class InputHandler {
   using KeyMap = std::unordered_map<KeyT, ctrl::Button>;
 
 public:
-  InputHandler(ctrl::JoyPad &pad, const KeyMap &map)
-      : joypad_(pad), map_(map) {}
+  InputHandler(ctrl::JoyPad &pad, const KeyMap &map, sys::NESDebugger &dbg)
+      : joypad_(pad), map_(map), debugger_(dbg) {}
 
   virtual ~InputHandler() = default;
 
@@ -46,9 +48,11 @@ private:
       } else {
         assert(false);
       }
+      debugger_.processInput(joypad_.ID, static_cast<uint8_t>(btn), state);
     }
   }
   const KeyMap &map_;
+  sys::NESDebugger &debugger_;
 };
 
 class KeyboardInputHandler
@@ -59,7 +63,8 @@ class KeyboardInputHandler
   static bool Enabled;
 
 public:
-  KeyboardInputHandler(ctrl::JoyPad &jp) : Parent(jp, ToJoyPad) {}
+  KeyboardInputHandler(ctrl::JoyPad &jp, sys::NESDebugger &dbg)
+      : Parent(jp, ToJoyPad, dbg) {}
   ~KeyboardInputHandler() = default;
 
   static void Init();
@@ -83,7 +88,8 @@ class ControllerInputHandler
   static bool Enabled;
 
 public:
-  ControllerInputHandler(ctrl::JoyPad &jp, int handle) : Parent(jp, ToJoyPad) {
+  ControllerInputHandler(ctrl::JoyPad &jp, int handle, sys::NESDebugger &dbg)
+      : Parent(jp, ToJoyPad, dbg) {
     auto controller = SDL_GameControllerOpen(handle);
     auto joystick = SDL_GameControllerGetJoystick(controller);
     js_id_ = SDL_JoystickInstanceID(joystick);
@@ -113,6 +119,34 @@ public:
 
 private:
   SDL_JoystickID js_id_;
+  static const KeyMap ToJoyPad;
+};
+
+class RecordingInputHandler
+    : public InputHandler<RecordingInputHandler, uint8_t> {
+  using KeyT = uint8_t;
+  using Parent = InputHandler<RecordingInputHandler, KeyT>;
+  using KeyMap = std::unordered_map<KeyT, ctrl::Button>;
+  static bool Enabled;
+  static uint32_t REC_EVENT;
+
+public:
+  RecordingInputHandler(ctrl::JoyPad &jp, sys::NESDebugger &dbg)
+      : Parent(jp, ToJoyPad, dbg) {}
+  ~RecordingInputHandler() = default;
+
+  static void Init();
+  static void HandleEvent(SDL_Event &e, sys::NES &nes, bool focused);
+  static uint32_t EventType() { return REC_EVENT; }
+  bool accept(SDL_Event &e) { return true; }
+  KeyT get_key(SDL_Event &e) {
+    return static_cast<KeyT>((e.user.code >> 8) & 0xFF);
+  }
+  uint8_t get_state(SDL_Event &e) {
+    return static_cast<uint8_t>(e.user.code & 0xFF);
+  }
+
+private:
   static const KeyMap ToJoyPad;
 };
 

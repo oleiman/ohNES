@@ -1,6 +1,7 @@
 #include "input.hpp"
 #include "joypad.hpp"
 #include "system.hpp"
+#include <cstdint>
 
 namespace sdl_internal {
 
@@ -23,7 +24,7 @@ void KeyboardInputHandler::HandleEvent(SDL_Event &e, sys::NES &nes,
   if (!Enabled) {
     return;
   }
-  static KeyboardInputHandler instance(nes.joypad_1);
+  static KeyboardInputHandler instance(nes.joypad_1, nes.debugger());
   instance.handleEvent(e, focused);
 }
 
@@ -58,8 +59,8 @@ void ControllerInputHandler::HandleEvent(SDL_Event &e, sys::NES &nes,
   switch (e.type) {
   case SDL_CONTROLLERDEVICEADDED: {
     try {
-      auto inst =
-          std::make_unique<ControllerInputHandler>(nes.getAvailablePad(), id);
+      auto inst = std::make_unique<ControllerInputHandler>(
+          nes.getAvailablePad(), id, nes.debugger());
       auto js_id = inst->js_id_;
       Instances.emplace(js_id, std::move(inst));
       std::cerr << "Controller " << +js_id << " ADDED... ("
@@ -85,6 +86,41 @@ void ControllerInputHandler::HandleEvent(SDL_Event &e, sys::NES &nes,
   default:
     std::cerr << "Unhandled: " << +e.type << std::endl;
     break;
+  }
+}
+
+const std::unordered_map<uint8_t, ctrl::Button> RecordingInputHandler::ToJoyPad{
+    {
+        {0, ctrl::Button::A},
+        {1, ctrl::Button::B},
+        {2, ctrl::Button::Select},
+        {3, ctrl::Button::Start},
+        {4, ctrl::Button::Up},
+        {5, ctrl::Button::Down},
+        {6, ctrl::Button::Left},
+        {7, ctrl::Button::Right},
+    }};
+
+bool RecordingInputHandler::Enabled = false;
+
+uint32_t RecordingInputHandler::REC_EVENT = SDL_USEREVENT;
+
+void RecordingInputHandler::Init() {
+  REC_EVENT = SDL_RegisterEvents(2);
+  assert(REC_EVENT != UINT32_MAX);
+  Enabled = true;
+}
+
+void RecordingInputHandler::HandleEvent(SDL_Event &e, sys::NES &nes,
+                                        bool focused) {
+  if (!Enabled) {
+    return;
+  }
+
+  static RecordingInputHandler instance(nes.joypad_1, nes.debugger());
+
+  if (e.type == REC_EVENT) {
+    instance.handleEvent(e, true);
   }
 }
 

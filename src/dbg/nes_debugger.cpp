@@ -5,28 +5,47 @@
 
 #include <algorithm>
 #include <bitset>
+#include <chrono>
 
 using vid::PPU;
 
 namespace sys {
 
 NESDebugger::NESDebugger(NES &console)
-    : dbg::Debugger(false, false), console_(console) {}
+    : dbg::Debugger(false, false), console_(console),
+      init_time_(std::chrono::system_clock::now()) {}
 
 void NESDebugger::setLogging(bool l) {
   if (l && !logging_) {
-    auto &rom = console_.cart().romfile;
-    std::string logfile = rom;
-    auto last_slash = logfile.find_last_of('/');
-    if (last_slash != std::string::npos) {
-      logfile = "." + rom.substr(rom.find_last_of('/'), rom.size());
-    }
+    auto logfile = get_romfile();
     logfile += ".log";
     std::cerr << "LOG: " << logfile << std::endl;
     log_stream_.open(logfile);
     assert(log_stream_);
   }
   logging_ = l;
+}
+
+void NESDebugger::setRecording(bool r) {
+  if (r && !recording_) {
+    auto recordfile = get_romfile();
+    recordfile += ".rec";
+    std::cerr << "RECORD: " << recordfile << std::endl;
+    recording_stream_.open(recordfile, std::ios::out | std::ios::binary);
+    assert(recording_stream_);
+  }
+  recording_ = r;
+}
+
+std::string NESDebugger::get_romfile() {
+  auto &full_path = console_.cart().romfile;
+  std::string romfile = full_path;
+  auto last_slash = romfile.find_last_of('/');
+  if (last_slash != std::string::npos) {
+    romfile =
+        "." + full_path.substr(full_path.find_last_of('/'), full_path.size());
+  }
+  return romfile + "_" + std::to_string(init_time_.time_since_epoch().count());
 }
 
 const instr::Instruction &NESDebugger::step(const instr::Instruction &in,
@@ -50,7 +69,7 @@ const instr::Instruction &NESDebugger::step(const instr::Instruction &in,
     instr_cache_.insert(in);
   }
 
-  if (logging_ && log_stream_) {
+  if (isLogging()) {
     log_stream_ << std::left << std::setw(40) << InstrToStr(in) << CpuStateStr()
                 << " (C: " << in.issueCycle << ")\n";
   }
@@ -58,6 +77,16 @@ const instr::Instruction &NESDebugger::step(const instr::Instruction &in,
   resume_ = false;
 
   return in;
+}
+
+void NESDebugger::processInput(uint8_t joy_id, uint8_t btn, uint8_t state) {
+  if (isRecording()) {
+    // TODO(oren): process through a struct/union
+    uint32_t v = (static_cast<uint32_t>(joy_id) << 16) |
+                 (static_cast<uint32_t>(btn) << 8) |
+                 (static_cast<uint32_t>(state));
+    recording_stream_.write(reinterpret_cast<char *>(&v), sizeof(v));
+  }
 }
 
 std::ostream &operator<<(std::ostream &os, NESDebugger &dbg) {

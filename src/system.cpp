@@ -43,6 +43,7 @@ bool NES::render(RenderBuffer &renderBuf) {
     std::copy(ppu_.frameBuffer().begin(), ppu_.frameBuffer().end(),
               renderBuf.begin());
     ppu_.clearFrame();
+    debugger_.nextFrame();
     return true;
   } else {
     return false;

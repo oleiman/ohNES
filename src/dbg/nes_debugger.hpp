@@ -7,6 +7,8 @@
 #include "util.hpp"
 
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 
 namespace sys {
 class NES;
@@ -35,6 +37,14 @@ public:
                                  const cpu::CpuState &state,
                                  mem::Mapper &mapper) override;
   void render(RenderBuffer &buf);
+  void processInput(uint8_t joy_id, uint8_t btn, uint8_t state);
+  void nextFrame() {
+    if (isRecording()) {
+      uint32_t end = UINT32_MAX;
+      recording_stream_.write(reinterpret_cast<char *>(&end), sizeof(end));
+    }
+  }
+
   void selectNametable(uint8_t s) { nt_select = s; }
   void cyclePalete() { ptable_pidx = (ptable_pidx + 1) & 0b111; }
 
@@ -67,6 +77,9 @@ public:
   std::string InstrToStr(const instr::Instruction &instr);
   std::string CpuStateStr() const;
   void setLogging(bool l);
+  bool isLogging() { return logging_ && log_stream_; }
+  void setRecording(bool l);
+  bool isRecording() { return recording_ && recording_stream_; }
 
   template <typename T, typename... Args> void setBreakpoint(Args... args) {
     if (breakpoints_.size() >= 32) {
@@ -97,6 +110,7 @@ private:
   void draw_ptables();
   void draw_palettes();
   void draw_scroll_region();
+  std::string get_romfile();
 
   uint8_t palette_idx() { return (ptable_pidx << 2); }
 
@@ -113,6 +127,9 @@ private:
   std::atomic<Mode> dbg_mode{Mode::RUN};
   bool logging_ = false;
   std::ofstream log_stream_;
+  bool recording_ = false;
+  std::ofstream recording_stream_;
+  std::chrono::system_clock::time_point init_time_;
 
   std::vector<std::unique_ptr<Breakpoint>> breakpoints_;
   bool resume_ = false;

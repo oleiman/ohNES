@@ -3,6 +3,7 @@
 #include "sdl/audio.hpp"
 #include "sdl/display.hpp"
 #include "sdl/input.hpp"
+#include "sdl/movie_player.hpp"
 #include "system.hpp"
 #include "wx_/dbg_app.h"
 
@@ -22,6 +23,7 @@ using sdl_internal::Audio;
 using sdl_internal::ControllerInputHandler;
 using sdl_internal::Display;
 using sdl_internal::KeyboardInputHandler;
+using sdl_internal::RecordingInputHandler;
 using sys::NES;
 
 #define SCALE 2
@@ -37,11 +39,15 @@ int main(int argc, char **argv) {
   args::Positional<std::string> romfile(required, "romfile",
                                         "iNES file to load");
 
+  args::ValueFlag<std::string> movie(argparse, "", "Control recording playback",
+                                     {"movie"});
+
   args::Group debugging(argparse, "Debugging:");
   args::Flag debug(debugging, "", "CPU debugger", {"debug"});
   args::Flag ppu_debug(debugging, "", "PPU debugger", {"ppu-debug"});
   args::Flag brk(debugging, "", "Immediately break", {'b', "break"});
   args::Flag log(debugging, "", "Enable instruction logging", {"log"});
+  args::Flag record(debugging, "", "Enable controller recording", {"record"});
 
   try {
     argparse.ParseCLI(argc, argv);
@@ -68,6 +74,7 @@ int main(int argc, char **argv) {
   }
 
   nes.debugger().setLogging(log.Get());
+  nes.debugger().setRecording(record.Get());
 
   LoadSystemPalette(DEFAULT_PALETTE);
 
@@ -82,6 +89,9 @@ int main(int argc, char **argv) {
 
     KeyboardInputHandler::Init();
     ControllerInputHandler::Init();
+    RecordingInputHandler::Init();
+
+    sdl_internal::MoviePlayer movie_player(movie.Get());
 
     std::unique_ptr<Display<sys::DBG_W, sys::DBG_H>> ppu_debugger = nullptr;
 
@@ -101,6 +111,7 @@ int main(int argc, char **argv) {
     auto clockStart = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point clockEnd;
     while (!quit) {
+      movie_player.generateEvents();
       while (SDL_PollEvent(&event) != 0) {
         // handle window events
         display->handleEvent(event);
@@ -108,6 +119,8 @@ int main(int argc, char **argv) {
           ppu_debugger->handleEvent(event);
         }
 
+        RecordingInputHandler::HandleEvent(event, nes,
+                                           display->hasMouseFocus());
         switch (event.type) {
         case SDL_QUIT:
           quit = true;

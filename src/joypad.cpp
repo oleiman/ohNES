@@ -1,6 +1,8 @@
 #include "joypad.hpp"
 
 namespace ctrl {
+uint8_t JoyPad::NextId = 0;
+
 uint8_t JoyPad::readNext() {
   if (curr_ >= state_.size()) {
     return 0x01;
