@@ -14,7 +14,12 @@ public:
 
   MoviePlayer(const std::string &fname) {
     if (!fname.empty()) {
+      std::cerr << "MOVIE: '" << fname << "'";
       m_stream_ = std::ifstream(fname, std::ios::in | std::ios::binary);
+      if (!m_stream_) {
+        std::cerr << " not found...";
+      }
+      std::cerr << std::endl;
     }
     // TODO(oren): add a header of some kind to validate movie-ness of the
     // specified file

@@ -32,6 +32,7 @@ struct JoyPad {
     }
   }
   void unclaim() { claimed_ = false; }
+  uint8_t peek(ctrl::Button b) const { return state_[static_cast<uint8_t>(b)]; }
 
   const uint8_t ID = NextId++;
 

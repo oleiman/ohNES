@@ -189,8 +189,9 @@ int main(int argc, char **argv) {
       } while (!nes.render(display->renderBuf));
 
       display->update();
+
       if (ppu_debugger != nullptr && ppu_debugger->isShown()) {
-        nes.debugger().render(ppu_debugger->renderBuf);
+        nes.debugger().renderPpuDbg(ppu_debugger->renderBuf);
         ppu_debugger->update();
       }
 

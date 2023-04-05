@@ -9,6 +9,18 @@
 
 using vid::PPU;
 
+static std::array<std::array<uint8_t, 3>, 2> ButtonFill{{
+    {0xFF, 0x00, 0x00},
+    {0x3F, 0x3F, 0xFF},
+}};
+static std::array<std::array<uint8_t, 3>, 2> StartSelectFill{{
+    {0x00, 0x00, 0x00},
+    {0x3F, 0x3F, 0xFF},
+}};
+static std::array<uint8_t, 3> Black{0x00, 0x00, 0x00};
+static std::array<uint8_t, 3> Gray{0xCF, 0xCF, 0xCF};
+// static std::array<uint8_t, 3> DarkGray{0x7F, 0x7F, 0x7F};
+
 namespace sys {
 
 NESDebugger::NESDebugger(NES &console)
@@ -152,7 +164,7 @@ void NESDebugger::draw_nametable() {
       auto upper = pattern_hi >> fine_x;
       auto value = ((upper & 0b1) << 1) | (lower & 0b1);
       auto c = palette[value] & 0x3F;
-      set_pixel(x, y, PPU::SystemPalette[c]);
+      set_pixel(x, y, PPU::SystemPalette[c], frameBuffer);
     }
   }
 }
@@ -203,7 +215,7 @@ void NESDebugger::draw_sprites() {
         tile_lo >>= 1;
         tile_hi >>= 1;
         auto c = palette[value] & 0x3f;
-        set_pixel(x + tile_x, y + tile_y, PPU::SystemPalette[c]);
+        set_pixel(x + tile_x, y + tile_y, PPU::SystemPalette[c], frameBuffer);
       }
     }
   }
@@ -234,7 +246,7 @@ void NESDebugger::draw_ptables() {
              ++tile_x, pattern_lo >>= 1, pattern_hi >>= 1) {
           auto value = ((pattern_hi & 0b1) << 1) | (pattern_lo & 0b1);
           auto c = palette[value] & 0x3F;
-          set_pixel(x + tile_x, y + tile_y, PPU::SystemPalette[c]);
+          set_pixel(x + tile_x, y + tile_y, PPU::SystemPalette[c], frameBuffer);
         }
       }
     }
@@ -251,13 +263,13 @@ void NESDebugger::draw_palettes() {
     int y = (i >> 4) * 16 + vert_off;
     for (int cx = 0; cx < 16; ++cx) {
       for (int cy = 0; cy < 16; ++cy) {
-        set_pixel(x + cx, y + cy, PPU::SystemPalette[c]);
+        set_pixel(x + cx, y + cy, PPU::SystemPalette[c], frameBuffer);
       }
     }
   }
 }
 
-void NESDebugger::render(RenderBuffer &buf) {
+void NESDebugger::renderPpuDbg(RenderBuffer &buf) {
   std::fill(&frameBuffer[0][0], &frameBuffer[0][0] + frameBuffer.size() * 3,
             0xCF);
 
@@ -266,19 +278,90 @@ void NESDebugger::render(RenderBuffer &buf) {
   draw_ptables();
   draw_palettes();
 
+  draw_controller();
+
   // TODO(oren): draw a box around the nametable region currently in frame
   // draw_scroll_region();
 
   std::copy(frameBuffer.begin(), frameBuffer.end(), buf.begin());
 }
 
-void NESDebugger::set_pixel(int x, int y, std::array<uint8_t, 3> const &rgb) {
+void NESDebugger::draw_rect(int x, int y, uint16_t w, uint16_t h,
+                            const std::array<uint8_t, 3> &fill,
+                            FrameBuffer &buf) {
+  for (int i = x; i < x + w; ++i) {
+    for (int j = y; j < y + h; ++j) {
+      set_pixel(i, j, fill, buf);
+    }
+  }
+}
+
+void NESDebugger::draw_square(int x, int y, uint16_t side,
+                              const std::array<uint8_t, 3> &fill,
+                              FrameBuffer &buf) {
+  draw_rect(x, y, side, side, fill, buf);
+}
+
+void NESDebugger::draw_controller() {
+
+  uint16_t x = 268;
+  uint16_t y = 256;
+  draw_rect(x, y, 256, 96, Black, frameBuffer);
+
+  /* DPAD  */
+  draw_square(x + 30, y + 28, 18, Gray, frameBuffer);
+  draw_square(x + 12, y + 46, 18, Gray, frameBuffer);
+  draw_square(x + 48, y + 46, 18, Gray, frameBuffer);
+  draw_square(x + 30, y + 64, 18, Gray, frameBuffer);
+
+  draw_rect(x + 31, y + 29, 16, 17,
+            StartSelectFill[console_.joypad_1.peek(ctrl::Button::Up)],
+            frameBuffer);
+  draw_rect(x + 13, y + 47, 17, 16,
+            StartSelectFill[console_.joypad_1.peek(ctrl::Button::Left)],
+            frameBuffer);
+  draw_rect(x + 48, y + 47, 17, 16,
+            StartSelectFill[console_.joypad_1.peek(ctrl::Button::Right)],
+            frameBuffer);
+  draw_rect(x + 31, y + 64, 16, 17,
+            StartSelectFill[console_.joypad_1.peek(ctrl::Button::Down)],
+            frameBuffer);
+
+  /* START/SELECT */
+
+  draw_rect(x + 84, y + 56, 72, 24, Gray, frameBuffer);
+  draw_rect(x + 84 + 8, y + 56 + 8, 20, 9,
+            StartSelectFill[console_.joypad_1.peek(ctrl::Button::Select)],
+            frameBuffer);
+  draw_rect(x + 84 + 72 - 8 - 20, y + 56 + 8, 20, 9,
+            StartSelectFill[console_.joypad_1.peek(ctrl::Button::Start)],
+            frameBuffer);
+
+  /* BUTTONS */
+
+  draw_square(x + 84 + 72 + 16, y + 54, 26, Gray, frameBuffer);
+
+  draw_square(x + 84 + 72 + 16 + 2, y + 54 + 2, 26 - 4,
+              ButtonFill[console_.joypad_1.peek(ctrl::Button::B)], frameBuffer);
+
+  draw_square(x + 84 + 72 + 16 + 26 + 8, y + 54, 26, Gray, frameBuffer);
+
+  draw_square(x + 84 + 72 + 16 + 2 + 26 + 8, y + 54 + 2, 26 - 4,
+              ButtonFill[console_.joypad_1.peek(ctrl::Button::A)], frameBuffer);
+
+  /* Design  */
+
+  // draw_rect(x + 82, y + 40, 76, 12, DarkGray, frameBuffer);
+}
+
+void NESDebugger::set_pixel(int x, int y, std::array<uint8_t, 3> const &rgb,
+                            FrameBuffer &buf) {
   // add a little space around the edge
   x += 16;
   y += 16;
   size_t pi = y * DBG_W + x;
-  if (pi < frameBuffer.size()) {
-    std::copy(std::begin(rgb), std::end(rgb), std::begin(frameBuffer[pi]));
+  if (pi < buf.size()) {
+    std::copy(std::begin(rgb), std::end(rgb), std::begin(buf[pi]));
   }
 }
 

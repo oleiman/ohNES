@@ -16,6 +16,9 @@ class NES;
 constexpr int DBG_W = 552;
 constexpr int DBG_H = 480;
 
+constexpr int PAD_W = 374;
+constexpr int PAD_H = 240;
+
 class NESDebugger : public dbg::Debugger {
   using RenderBuffer = std::array<std::array<uint8_t, 3>, DBG_W * DBG_H>;
   using FrameBuffer = std::array<std::array<uint8_t, 3>, DBG_W * DBG_H>;
@@ -36,7 +39,7 @@ public:
   instr::Instruction const &step(const instr::Instruction &in,
                                  const cpu::CpuState &state,
                                  mem::Mapper &mapper) override;
-  void render(RenderBuffer &buf);
+  void renderPpuDbg(RenderBuffer &buf);
   void processInput(uint8_t joy_id, uint8_t btn, uint8_t state);
   void nextFrame() {
     if (isRecording()) {
@@ -103,13 +106,21 @@ public:
 
 private:
   void setMode(Mode s) { dbg_mode = s; }
-  void set_pixel(int x, int y, std::array<uint8_t, 3> const &rgb);
+  void set_pixel(int x, int y, std::array<uint8_t, 3> const &rgb,
+                 FrameBuffer &buf);
   uint16_t calc_nt_base(int x, int y);
   void draw_nametable();
   void draw_sprites();
   void draw_ptables();
   void draw_palettes();
   void draw_scroll_region();
+
+  void draw_rect(int x, int y, uint16_t w, uint16_t h,
+                 const std::array<uint8_t, 3> &fill, FrameBuffer &buf);
+  void draw_square(int x, int y, uint16_t side,
+                   const std::array<uint8_t, 3> &fill, FrameBuffer &buf);
+  void draw_controller();
+
   std::string get_romfile();
 
   uint8_t palette_idx() { return (ptable_pidx << 2); }
