@@ -19,24 +19,7 @@ constexpr size_t HEIGHT = 240;
 void LoadSystemPalette(const std::string &fname);
 
 class PPU {
-  using AddressT = uint16_t;
-  using DataT = uint8_t;
-  using FrameBuffer = std::array<std::array<uint8_t, 3>, WIDTH * HEIGHT>;
-
-  enum class Priority {
-    FG = 0,
-    BG = 1,
-  };
-
-  // scroll is opposite mirroring.
-  // e.g. horiz mirror (0) indicates vertical  scroll
-  enum class Scroll {
-    VERTICAL = 0,
-    HORIZONTAL = 1,
-    LOWER = 2,
-    UPPER = 3,
-  };
-
+public:
   union Sprite {
     struct {
       uint8_t xpos;
@@ -57,6 +40,25 @@ class PPU {
       uint16_t __;
     } __attribute__((packed)) s;
     uint64_t v;
+  };
+
+private:
+  using AddressT = uint16_t;
+  using DataT = uint8_t;
+  using FrameBuffer = std::array<std::array<uint8_t, 3>, WIDTH * HEIGHT>;
+
+  enum class Priority {
+    FG = 0,
+    BG = 1,
+  };
+
+  // scroll is opposite mirroring.
+  // e.g. horiz mirror (0) indicates vertical  scroll
+  enum class Scroll {
+    VERTICAL = 0,
+    HORIZONTAL = 1,
+    LOWER = 2,
+    UPPER = 3,
   };
 
 public:
