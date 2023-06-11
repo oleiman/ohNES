@@ -58,7 +58,7 @@ if (WITH_APP)
   find_package(SDL2 REQUIRED)
 
   # set(wxWidgets_USE_DEBUG ON)
-  find_package(wxWidgets REQUIRED core base)
+  find_package(wxWidgets REQUIRED core base adv)
 
   include(${wxWidgets_USE_FILE})
 
@@ -68,7 +68,7 @@ if (WITH_APP)
     ${wxWidgets_INCLUDE_DIRS}
   )
 
-  set_property(TARGET ohNES PROPERTY CXX_STANDARD 17)
+  set_property(TARGET ohNES PROPERTY CXX_STANDARD 20)
 
   # if (LINUX AND NOT APPLE)
   #   set(GPERF_LIB profiler)

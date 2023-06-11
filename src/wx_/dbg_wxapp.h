@@ -22,7 +22,7 @@ public:
     SetFont(wxFontInfo(12).Family(wxFONTFAMILY_TELETYPE));
   }
 
-  virtual void OnDraw(wxDC &dc) wxOVERRIDE;
+  virtual void OnDraw(wxDC &dc) override;
 
   void SetConsole(sys::NES *console) { this->console = console; }
 
@@ -43,7 +43,7 @@ public:
     SetScrollbars(0, line_height, 0, n_lines + 1, 0, 0, true);
   }
 
-  virtual void OnDraw(wxDC &dc) wxOVERRIDE;
+  virtual void OnDraw(wxDC &dc) override;
 
   void SetConsole(sys::NES *console) { this->console = console; }
 
@@ -82,7 +82,7 @@ public:
 
   void SetConsole(sys::NES *console) { _console = console; }
 
-  // virtual void OnDraw(wxDC &dc) wxOVERRIDE;
+  // virtual void OnDraw(wxDC &dc) override;
 private:
   sys::NES *_console;
 };
@@ -158,7 +158,7 @@ class DbgWxApp : public wxApp {
 
 public:
   DbgWxApp() {}
-  bool OnInit() wxOVERRIDE;
+  bool OnInit() override;
 
   void SetNESDebugger(sys::NESDebugger *nes_dbg) { _nes_dbg = nes_dbg; }
 

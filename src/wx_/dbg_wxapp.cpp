@@ -14,6 +14,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <bitset>
 
 IMPLEMENT_APP_NO_MAIN(wx_internal::DbgWxApp)
 
